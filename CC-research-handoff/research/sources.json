@@ -1,0 +1,114 @@
+{
+  "review_date": "2026-11-08",
+  "papers": [
+    {
+      "id": "P1",
+      "slug": "c3",
+      "title": "C3: Cutting Tail Latency in Cloud Data Stores via Adaptive Replica Selection",
+      "year": 2015,
+      "landing_url": "https://www.usenix.org/conference/nsdi15/technical-sessions/presentation/suresh",
+      "pdf_urls": [
+        "https://www.usenix.org/system/files/conference/nsdi15/nsdi15-paper-suresh.pdf"
+      ],
+      "reviewed_sha256": "e966252322604204d9fd5538eb5e023e93f087906653d750a00d6ca1f92bdb52",
+      "reviewed_download_url": "https://www.usenix.org/system/files/conference/nsdi15/nsdi15-paper-suresh.pdf",
+      "reviewed_pdf_pages": 16
+    },
+    {
+      "id": "P2",
+      "slug": "tars",
+      "title": "Tars: Timeliness-aware Adaptive Replica Selection for Key-Value Stores",
+      "year": 2017,
+      "landing_url": "https://arxiv.org/abs/1702.08172",
+      "version": "arXiv v1",
+      "pdf_urls": [
+        "https://arxiv.org/pdf/1702.08172v1"
+      ],
+      "reviewed_sha256": "0e61c971938eed7381b34e09dccfe4be19ce0a3e7799a2e171d5439effc5072b",
+      "reviewed_download_url": "https://arxiv.org/pdf/1702.08172v1",
+      "reviewed_pdf_pages": 11
+    },
+    {
+      "id": "P3",
+      "slug": "das",
+      "title": "Reducing Tail Latency via Safe and Simple Duplication",
+      "year": 2019,
+      "landing_url": "https://arxiv.org/abs/1905.13352",
+      "version": "arXiv v1",
+      "pdf_urls": [
+        "https://arxiv.org/pdf/1905.13352v1"
+      ],
+      "reviewed_sha256": "e09e569c11f3b45d9f9df7852ae96e35639c2cf63c4d29f8ab0143e0cd6ac151",
+      "reviewed_download_url": "https://arxiv.org/pdf/1905.13352v1",
+      "reviewed_pdf_pages": 14
+    },
+    {
+      "id": "P4",
+      "slug": "scrubbing",
+      "title": "A Clean-Slate Look at Disk Scrubbing",
+      "year": 2010,
+      "landing_url": "https://www.usenix.org/conference/fast-10/clean-slate-look-disk-scrubbing",
+      "pdf_urls": [
+        "https://www.usenix.org/event/fast10/tech/full_papers/oprea.pdf",
+        "https://www.usenix.org/legacy/event/fast10/tech/full_papers/oprea.pdf"
+      ],
+      "reviewed_sha256": "5f323dd8e00873e47e2eb8b396a4f90c4683476f7ead6ce078cbcbae2f03cfa9",
+      "reviewed_download_url": "https://www.usenix.org/event/fast10/tech/full_papers/oprea.pdf",
+      "reviewed_pdf_pages": 14
+    },
+    {
+      "id": "P5",
+      "slug": "faults",
+      "title": "Redundancy Does Not Imply Fault Tolerance: Analysis of Distributed Storage Reactions to Single Errors and Corruptions",
+      "year": 2017,
+      "landing_url": "https://www.usenix.org/conference/fast17/technical-sessions/presentation/ganesan",
+      "pdf_urls": [
+        "https://www.usenix.org/system/files/conference/fast17/fast17-ganesan.pdf"
+      ],
+      "reviewed_sha256": "228845e4e684d8cdd65e4277ef5363286b6a0c9d9e20b2ae2bbe765dcecf063a",
+      "reviewed_download_url": "https://www.usenix.org/system/files/conference/fast17/fast17-ganesan.pdf",
+      "reviewed_pdf_pages": 19
+    },
+    {
+      "id": "P6",
+      "slug": "repairboost",
+      "title": "Boosting Full-Node Repair in Erasure-Coded Storage",
+      "year": 2021,
+      "landing_url": "https://www.usenix.org/conference/atc21/presentation/lin",
+      "pdf_urls": [
+        "https://www.cse.cuhk.edu.hk/~pclee/www/pubs/atc21repairboost.pdf",
+        "https://www.usenix.org/system/files/atc21-lin.pdf"
+      ],
+      "reviewed_sha256": "25a16915e3d7ba21061707c679180d443d05f461d38a2f514145c9228131ffcb",
+      "reviewed_download_url": "https://www.cse.cuhk.edu.hk/~pclee/www/pubs/atc21repairboost.pdf",
+      "reviewed_pdf_pages": 15
+    },
+    {
+      "id": "P7",
+      "slug": "declarative-io",
+      "title": "Scaling the IO Wall with Declarative IO",
+      "year": 2026,
+      "landing_url": "https://www.pdl.cmu.edu/PDL-FTP/Storage/Declarative_IO-OSDI26_abs.shtml",
+      "pdf_urls": [
+        "https://www.pdl.cmu.edu/PDL-FTP/Storage/Declarative_IO-OSDI26.pdf"
+      ],
+      "reviewed_sha256": "9d3efe12db3529c6d1f8c2de67de01ce3290cce7a5d9da0f68c509fcfe0c2b6e",
+      "reviewed_download_url": "https://www.pdl.cmu.edu/PDL-FTP/Storage/Declarative_IO-OSDI26.pdf",
+      "reviewed_pdf_pages": 20
+    },
+    {
+      "id": "P8",
+      "slug": "getbatch",
+      "title": "GetBatch: Distributed Multi-Object Retrieval for ML Data Loading",
+      "year": 2026,
+      "landing_url": "https://arxiv.org/abs/2602.22434",
+      "version": "arXiv v1",
+      "pdf_urls": [
+        "https://arxiv.org/pdf/2602.22434v1"
+      ],
+      "reviewed_sha256": "1e37d3567a6e899caff37cf1e003d1b93db6cb4b068f26b7f3411006458555a5",
+      "reviewed_download_url": "https://arxiv.org/pdf/2602.22434v1",
+      "reviewed_pdf_pages": 11
+    }
+  ]
+}

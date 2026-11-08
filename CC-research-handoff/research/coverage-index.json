@@ -1,0 +1,58 @@
+{
+  "P1": {
+    "slug": "c3",
+    "pdf_pages": 16,
+    "words": 11521,
+    "reviewed_sections": "Sections 3-7; PDF pages 5-14; scoring and cubic controller formula checked in rendered page 8",
+    "review_type": "Full-text engineering review of relevant methods, evaluation and limitations; not an independent reproduction or proof audit"
+  },
+  "P2": {
+    "slug": "tars",
+    "pdf_pages": 11,
+    "words": 8348,
+    "reviewed_sections": "Sections III-VI; PDF pages 3-10; motivation, algorithms, simulation and limitations",
+    "review_type": "Full-text engineering review of relevant methods, evaluation and limitations; not an independent reproduction or proof audit"
+  },
+  "P3": {
+    "slug": "das",
+    "pdf_pages": 14,
+    "words": 9202,
+    "reviewed_sections": "Sections 2-7; PDF pages 2-12; priority, purging, proxy, applications and evaluation",
+    "review_type": "Full-text engineering review of relevant methods, evaluation and limitations; not an independent reproduction or proof audit"
+  },
+  "P4": {
+    "slug": "scrubbing",
+    "pdf_pages": 14,
+    "words": 9837,
+    "reviewed_sections": "Sections 4-6; PDF pages 6-14; strategy, model/evaluation assumptions and limitations",
+    "review_type": "Full-text engineering review of relevant methods, evaluation and limitations; not an independent reproduction or proof audit"
+  },
+  "P5": {
+    "slug": "faults",
+    "pdf_pages": 19,
+    "words": 12898,
+    "reviewed_sections": "Sections 3-4; PDF pages 4-13; methodology, historical examples and cross-system observations",
+    "review_type": "Full-text engineering review of relevant methods, evaluation and limitations; not an independent reproduction or proof audit"
+  },
+  "P6": {
+    "slug": "repairboost",
+    "pdf_pages": 15,
+    "words": 11873,
+    "reviewed_sections": "Sections 3-5; PDF pages 4-12; mapping, flow scheduling, extensions and evaluation",
+    "review_type": "Full-text engineering review of relevant methods, evaluation and limitations; not an independent reproduction or proof audit"
+  },
+  "P7": {
+    "slug": "declarative-io",
+    "pdf_pages": 20,
+    "words": 15771,
+    "reviewed_sections": "Sections 4-8; PDF pages 6-14; declarations, consistency, planner/cache and evaluation",
+    "review_type": "Full-text engineering review of relevant methods, evaluation and limitations; not an independent reproduction or proof audit"
+  },
+  "P8": {
+    "slug": "getbatch",
+    "pdf_pages": 11,
+    "words": 6611,
+    "reviewed_sections": "Sections 2-5; PDF pages 2-9; protocol, failure/admission, benchmarks and limitations",
+    "review_type": "Full-text engineering review of relevant methods, evaluation and limitations; not an independent reproduction or proof audit"
+  }
+}

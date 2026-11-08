@@ -1,0 +1,66 @@
+{
+  "P1": {
+    "id": "P1",
+    "path": "research/papers/c3.pdf",
+    "url": "https://www.usenix.org/system/files/conference/nsdi15/nsdi15-paper-suresh.pdf",
+    "sha256": "e966252322604204d9fd5538eb5e023e93f087906653d750a00d6ca1f92bdb52",
+    "bytes": 941363,
+    "cached": true
+  },
+  "P2": {
+    "id": "P2",
+    "path": "research/papers/tars.pdf",
+    "url": "https://arxiv.org/pdf/1702.08172v1",
+    "sha256": "0e61c971938eed7381b34e09dccfe4be19ce0a3e7799a2e171d5439effc5072b",
+    "bytes": 908353,
+    "cached": true
+  },
+  "P3": {
+    "id": "P3",
+    "path": "research/papers/das.pdf",
+    "url": "https://arxiv.org/pdf/1905.13352v1",
+    "sha256": "e09e569c11f3b45d9f9df7852ae96e35639c2cf63c4d29f8ab0143e0cd6ac151",
+    "bytes": 2125997,
+    "cached": true
+  },
+  "P4": {
+    "id": "P4",
+    "path": "research/papers/scrubbing.pdf",
+    "url": "https://www.usenix.org/event/fast10/tech/full_papers/oprea.pdf",
+    "sha256": "5f323dd8e00873e47e2eb8b396a4f90c4683476f7ead6ce078cbcbae2f03cfa9",
+    "bytes": 171970,
+    "cached": true
+  },
+  "P5": {
+    "id": "P5",
+    "path": "research/papers/faults.pdf",
+    "url": "https://www.usenix.org/system/files/conference/fast17/fast17-ganesan.pdf",
+    "sha256": "228845e4e684d8cdd65e4277ef5363286b6a0c9d9e20b2ae2bbe765dcecf063a",
+    "bytes": 704008,
+    "cached": true
+  },
+  "P6": {
+    "id": "P6",
+    "path": "research/papers/repairboost.pdf",
+    "url": "https://www.cse.cuhk.edu.hk/~pclee/www/pubs/atc21repairboost.pdf",
+    "sha256": "25a16915e3d7ba21061707c679180d443d05f461d38a2f514145c9228131ffcb",
+    "bytes": 1015738,
+    "cached": true
+  },
+  "P7": {
+    "id": "P7",
+    "path": "research/papers/declarative-io.pdf",
+    "url": "https://www.pdl.cmu.edu/PDL-FTP/Storage/Declarative_IO-OSDI26.pdf",
+    "sha256": "9d3efe12db3529c6d1f8c2de67de01ce3290cce7a5d9da0f68c509fcfe0c2b6e",
+    "bytes": 5190960,
+    "cached": true
+  },
+  "P8": {
+    "id": "P8",
+    "path": "research/papers/getbatch.pdf",
+    "url": "https://arxiv.org/pdf/2602.22434v1",
+    "sha256": "1e37d3567a6e899caff37cf1e003d1b93db6cb4b068f26b7f3411006458555a5",
+    "bytes": 668576,
+    "cached": true
+  }
+}

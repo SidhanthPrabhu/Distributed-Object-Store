@@ -1,0 +1,85 @@
+{
+  "purpose": "Portable research/design handoff; no object-store application or benchmark results included",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "11eac877d3df303fc8ba1ac9ed56c6648da6664eb7aac103427d7e161e1635fc",
+      "bytes": 25396
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "5b187451969718e67b7af49f3fa85927c55246d8b1c7c8125427f3ae82637530",
+      "bytes": 279
+    },
+    {
+      "path": "docs/coding-agent-brief.md",
+      "sha256": "3d9cb211a4eb3e592300163bf5f8075d1485cbd454998f9b86fe4c8022870bee",
+      "bytes": 9772
+    },
+    {
+      "path": "docs/course-map.md",
+      "sha256": "ebcea89b1de1fba6ee67b37e8b1472b5f2f3c867aadb3bbb76cd40c747ac97bd",
+      "bytes": 4428
+    },
+    {
+      "path": "docs/feature-spec.md",
+      "sha256": "3081c6b9b02912d122bbc867bff85f97989ffc14b74c6e4bf9d02792ffa3a188",
+      "bytes": 29860
+    },
+    {
+      "path": "docs/research-review.md",
+      "sha256": "5e0912c705bf53f92a83c212c5699e685aec0c5dbcb47324f7ffa640805f8911",
+      "bytes": 24292
+    },
+    {
+      "path": "docs/system-spec.md",
+      "sha256": "c2ee7dd3de50c22ad9f0678844dcf30a4eaecee548b91e44e04bb2adeaa3a801",
+      "bytes": 23256
+    },
+    {
+      "path": "docs/validation-plan.md",
+      "sha256": "017bb0302f6180007cdbb4ec755db11fd9753a5bbd6b498aa2dcf42e8392d33f",
+      "bytes": 18981
+    },
+    {
+      "path": "scripts/fetch_research.py",
+      "sha256": "54da58ee9e3043f76f3e244e55c02eefeab9ca84b75e0a562e87aaf224d7640f",
+      "bytes": 3077
+    },
+    {
+      "path": "scripts/verify_handoff.py",
+      "sha256": "5e234f5faedaa8ecc627cbb2067983d570526fda64f6bab4854c94b21bf5882a",
+      "bytes": 4118
+    },
+    {
+      "path": "references/assignment.pdf",
+      "sha256": "6c3a0e2a9e37d21b43b26a63d62b39b97042c3c5e902456171cb4cd4a3692651",
+      "bytes": 9270
+    },
+    {
+      "path": "research/coverage-index.json",
+      "sha256": "8ab1ddada6030a9017b6b56a810c09c6f44a6980fed4eff3bf40b616829fc929",
+      "bytes": 2717
+    },
+    {
+      "path": "research/downloads.json",
+      "sha256": "2562a5884c84c379ccc8cd800689d87f7eb158c437a857164e636c5674b82137",
+      "bytes": 2137
+    },
+    {
+      "path": "research/handoff-validation.json",
+      "sha256": "98eaa1b292d6dd92e9327289b24cbcb083e7e516e57c4cc3180281096666d0fd",
+      "bytes": 898
+    },
+    {
+      "path": "research/sources.json",
+      "sha256": "fac79b62b3b6f023844718d73a051295dd94a6b3852cb4c28c48caa55e2ef93a",
+      "bytes": 4678
+    },
+    {
+      "path": "research/references.bib",
+      "sha256": "6301bf8cbc8c905e661ba05d94e388f1ee8b8fc8d837d2fd37a5630208b1e4dd",
+      "bytes": 3408
+    }
+  ]
+}

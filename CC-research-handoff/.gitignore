@@ -1,0 +1,11 @@
+# Public source copies are cached for local reading; share links/manifest instead.
+research/papers/
+research/extracted/
+research/course-extracted/
+tmp/
+__pycache__/
+*.pyc
+# Future implementation output; do not commit data or fabricated benchmark results.
+data/
+results/raw/
+.env

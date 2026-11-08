@@ -1,0 +1,47 @@
+{
+  "review_date": "2026-11-08",
+  "scope": "Research handoff only; application not implemented or tested",
+  "source_pdfs_verified": 8,
+  "requirements": 13,
+  "features": 12,
+  "correctness_scenarios": 18,
+  "experiments": 9,
+  "documents": [
+    {
+      "file": "README.md",
+      "words": 3417,
+      "lines": 249
+    },
+    {
+      "file": "docs/coding-agent-brief.md",
+      "words": 1289,
+      "lines": 70
+    },
+    {
+      "file": "docs/course-map.md",
+      "words": 585,
+      "lines": 29
+    },
+    {
+      "file": "docs/feature-spec.md",
+      "words": 3885,
+      "lines": 305
+    },
+    {
+      "file": "docs/research-review.md",
+      "words": 3133,
+      "lines": 174
+    },
+    {
+      "file": "docs/system-spec.md",
+      "words": 3176,
+      "lines": 222
+    },
+    {
+      "file": "docs/validation-plan.md",
+      "words": 2623,
+      "lines": 170
+    }
+  ],
+  "errors": []
+}
