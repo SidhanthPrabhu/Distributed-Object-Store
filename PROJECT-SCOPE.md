@@ -1,6 +1,6 @@
 # Course submission and portfolio scope
 
-Scope recommendation prepared 8 November 2026 after reading the complete research handoff and the original three-page assignment; updated to record the subsequent feature selection and two-person split. The application is not implemented yet. This document proposes what to build; it does not report passing software or benchmarks. See [TEAM-PLAN.md](TEAM-PLAN.md) for ownership and [the tracker](docs/COURSE-TRACKER.md) for actual progress.
+Scope recommendation prepared 8 November 2026 after reading the complete research handoff and the original three-page assignment; updated to record the subsequent feature selection and two-person split. This document defines the target scope; it does not report passing software or benchmarks. See [TEAM-PLAN.md](TEAM-PLAN.md) for ownership and [the tracker](docs/COURSE-TRACKER.md) for actual progress.
 
 ## Decision
 

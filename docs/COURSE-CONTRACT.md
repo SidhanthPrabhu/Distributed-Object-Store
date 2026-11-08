@@ -1,6 +1,6 @@
 # Course controller/worker contract
 
-Initial implementation agreement, 8 November 2026. These are **design targets**, not implemented routes. You own changes; Friend reviews them. This is the small course contract; use the handoff's [system specification](../CC-research-handoff/docs/system-spec.md) for detailed safety rationale. The assignment's required routes remain unchanged.
+Initial implementation agreement, 8 November 2026. This is the target contract; implementation is partial. [A1/A2 foundation status](CONTROLLER-FOUNDATION.md) records available models and registration/heartbeat behavior; inventory reconciliation and real-service acceptance remain pending. You own changes; Friend reviews them. This is the small course contract; use the handoff's [system specification](../CC-research-handoff/docs/system-spec.md) for detailed safety rationale. The assignment's required routes remain unchanged.
 
 ## Topology and common rules
 

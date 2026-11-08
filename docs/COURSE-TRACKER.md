@@ -1,14 +1,14 @@
 # Course implementation tracker
 
-Last initialized: 8 November 2026. **Planning only: every card is TODO.** Owners are role labels until GitHub handles are added. Update this file as implementation proceeds; links in the last column should point to real issues/PRs/check output.
+Last updated: 8 November 2026. **A1 and the independent A2 foundation are ready for review; no joint milestone has passed.** Owners are role labels until GitHub handles are added. Update this file as implementation proceeds; links in the last column should point to real commits/issues/check output.
 
 Allowed statuses: **TODO**, **IN PROGRESS**, **IN REVIEW**, **BLOCKED**, **DONE**. A card becomes DONE only after its acceptance checks pass and the other person reviews it. A blocker must name the missing dependency or failing behavior.
 
-| Card | Owner | Deliverable | Dependency | Status | Issue / PR / evidence / blocker |
+| Card | Owner | Deliverable | Dependency | Status | Commit / issue / evidence / blocker |
 |---|---|---|---|---|---|
-| A1 | You | Shared models and controller skeleton | None | TODO | — |
+| A1 | You | Shared models and controller skeleton | None | IN REVIEW | `codex/a1-controller-foundation`: shared configuration/wire models, factory, error/health behavior, owned SQLite/HTTPX lifespan. [Evidence and handoff](CONTROLLER-FOUNDATION.md): 56 controller checks passed; compile check passed. Friend review and imports/error/lifecycle checks from the real B1/B2 worker application remain pending; no worker app or packaging is available in this checkout. |
 | B1 | Friend | Packaging, Docker, Compose, initial CI | Entry-point agreement with A1 | TODO | — |
-| A2 | You | Controller metadata and worker registry | A1; integrate B2/B3 | TODO | — |
+| A2 | You | Controller metadata and worker registry | A1; integrate B2/B3 | IN REVIEW | **Foundation slice only** on `codex/a1-controller-foundation`: durable manifests/chunks/receipts, pending intents, epochs/sequences, tombstones/all-worker cleanup needs, registration/identity checks, heartbeat expiry and durable report acknowledgements; included in 56 passing local checks. [Remaining work/dependencies](CONTROLLER-FOUNDATION.md): inventory fetch/reconciliation, cleanup execution/recovery, guarded HEALTHY eligibility, and real four-worker/restart checks require B1/B2/B3. Fresh registrations remain RECONCILING, expiring ones become SUSPECT/UNAVAILABLE, and none become HEALTHY; readiness stays 503. Full A2 acceptance is open; Friend review pending. |
 | B2 | Friend | Durable chunk store and worker APIs | A1 wire models | TODO | — |
 | B3 | Friend | Registration, heartbeats, cleanup fencing | B2; integrate A2 | TODO | — |
 | A3 | You | Upload and checked download | A2/B2; registration | TODO | — |
@@ -52,6 +52,7 @@ Also verify restart persistence, boundary/empty files, invalid input, both copie
 | 2026-11-08 | Worker-local fixed-order scrub reports through heartbeat | Avoid a second scheduling framework; permit cold-corruption detection |
 | 2026-11-08 | Controller may relay one bounded chunk during serial repair | Reuse worker PUT/GET for course scope; direct worker transfers remain a later optimization |
 | 2026-11-08 | Course release before selected portfolio extensions | Keep submission reproducible and independent of later research work |
+| 2026-11-08 | Both contributors commit and push directly to main; no task branches or pull requests required | Owner preference; synchronize before pushing and preserve technical review/acceptance evidence separately |
 | 2026-11-08 | Stable role labels, root agent instructions, and role-specific starter prompts | A fresh teammate chat must keep Friend's B-cards separate from the owner's A-cards |
 | 2026-11-08 | Compiled assignment checklist plus named PDF page/section references | Make assignment coverage readable without ambiguous section-symbol shorthand |
 

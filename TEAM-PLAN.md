@@ -1,6 +1,6 @@
 # Course project: two-person implementation plan
 
-Recorded 8 November 2026. **You** means the repository owner's controller role; **Friend** means the teammate's worker/deployment role, even when that teammate is the person talking to Codex. These labels can be replaced with GitHub handles later. All tasks are currently **TODO**. No application, tests, deployment, or demonstrations have been completed. Use the [Codex starting prompts](docs/CODEX-START.md) to hand each role to a fresh chat.
+Recorded 8 November 2026. **You** means the repository owner's controller role; **Friend** means the teammate's worker/deployment role, even when that teammate is the person talking to Codex. These labels can be replaced with GitHub handles later. See the [tracker](docs/COURSE-TRACKER.md) for actual implementation/review status and outstanding integration gates. Use the [Codex starting prompts](docs/CODEX-START.md) to hand each role to a fresh chat.
 
 ## What we are building
 
@@ -25,7 +25,7 @@ This is a service boundary, not a knowledge boundary: both people must understan
 
 ## Proposed files and who changes them
 
-These paths are implementation targets; they do not exist yet.
+These paths define ownership for implemented foundations and later implementation targets.
 
 | Paths | Primary owner | Coordination rule |
 |---|---|---|
@@ -37,13 +37,13 @@ These paths are implementation targets; they do not exist yet.
 | `docs/COURSE-CONTRACT.md` | You | Both review every contract change; update affected services together |
 | `docs/DEMO.md` | Friend | Both run the final walkthrough |
 | `docs/ARCHITECTURE.md` | You | Friend contributes worker persistence/restart details |
-| `README.md`, `PROJECT-SCOPE.md`, `TEAM-PLAN.md`, `docs/COURSE-TRACKER.md` | Shared | Keep edits small; coordinate in the relevant PR to avoid simultaneous rewrites |
+| `README.md`, `PROJECT-SCOPE.md`, `TEAM-PLAN.md`, `docs/COURSE-TRACKER.md` | Shared | Keep edits small; coordinate directly with the teammate to avoid simultaneous rewrites |
 
 Use the same application image with different controller/worker entry points if practical. Do not create a framework of scheduler plugins or resume-only modules in the course implementation.
 
 ## Task cards
 
-Each ID below can become one GitHub issue. Copy its description and acceptance criteria into the included issue template. A larger card may use several small PRs; put the ID in every PR title. The [tracker](docs/COURSE-TRACKER.md) is the progress source of truth until actual GitHub issues are linked there.
+Each ID below can become one GitHub issue. Copy its description and acceptance criteria into the included issue template. A larger card may use several small commits; put the card ID in commit messages. The [tracker](docs/COURSE-TRACKER.md) is the progress source of truth until actual GitHub issues are linked there.
 
 ### A1 — Shared models and controller skeleton — You
 
@@ -133,12 +133,12 @@ Early fakes are acceptable for local development, but a milestone passes only wi
 
 ## GitHub coordination
 
-1. Commit and push this planning package first using [the publication guide](docs/GITHUB-START.md). No issue, PR, commit, or remote change has been created by this planning task.
+1. Both people work directly on `main` and push to `origin/main`; task branches, pull requests, and PR approval are not required. See [the publication guide](docs/GITHUB-START.md).
 2. Create an issue per A1–A6/B1–B6 with the issue template. Link its ID in the tracker; add an assignee and milestone if useful. GitHub handles and due dates remain unassigned until known.
-3. Use one short-lived branch per card or small slice, such as `codex/a3-upload` or `codex/b2-chunk-store`. Open a PR against the shared main branch and request review from the other person.
+3. With a clean checkout, pull `main` before starting. Commit one card or small slice at a time. Before pushing, rebase local commits onto the current `origin/main`, resolve conflicts, and rerun affected checks. Never force-push over the other person's commits.
 4. Keep controller/worker changes in their owner paths. For shared files, the primary owner makes the edit after both people agree. Cross-service contract changes include updated examples and tests in the same coordinated change.
-5. PRs state the card ID, changed behavior, checks actually run, and remaining limitations using the included template. Never mark an unrun check as passed.
-6. After merge, update the tracker with evidence and sync the main branch before starting another dependent card. A useful task update is: completed behavior, current blocker, and the next interface needed.
+5. Commit messages and the tracker state the card ID, changed behavior, checks actually run, and remaining limitations. Share the pushed commit with the other person. Existing PR templates are optional; no PR is needed. Never mark an unrun check as passed.
+6. After pushing, the other person pulls `main`. Update the tracker with evidence before starting another dependent card. A useful task update is: completed behavior, current blocker, and the next interface needed. Pushing does not imply teammate review or milestone acceptance; review can happen directly without a PR.
 7. Both people review recovery-sensitive code and run each other's demos. Freeze a tested `course-v1` tag only at C4. Continue portfolio work afterward without changing the frozen submission.
 
 Do not commit environment secrets, live databases, local volume data, or generated large test files. Do not delete persistent volumes during failure/restart demos. The root `.gitignore` provides initial exclusions; keep it aligned with actual storage paths.

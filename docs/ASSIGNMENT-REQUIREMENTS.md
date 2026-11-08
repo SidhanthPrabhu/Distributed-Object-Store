@@ -1,6 +1,6 @@
 # Original assignment: readable requirements checklist
 
-This is a compiled summary of the supplied three-page **Cloud Computing — Infrastructure Project: Mini Distributed Cloud Object Store** assignment. The [original PDF](../CC-research-handoff/references/assignment.pdf) is authoritative. Page numbers below refer to that PDF, counted from 1. This document adds ownership and acceptance pointers; it does not add grading criteria. All implementation remains TODO.
+This is a compiled summary of the supplied three-page **Cloud Computing — Infrastructure Project: Mini Distributed Cloud Object Store** assignment. The [original PDF](../CC-research-handoff/references/assignment.pdf) is authoritative. Page numbers below refer to that PDF, counted from 1. This document adds ownership and acceptance pointers; it does not add grading criteria. See [the tracker](COURSE-TRACKER.md) for actual implementation status.
 
 The root `Mini_Distributed_Cloud_Object_Store.pdf` is an identical copy of the bundled assignment, verified by SHA-256 during preparation. Use the handoff copy linked above as the canonical documentation link.
 
