@@ -1,7 +1,6 @@
 """Short SQLite transactions; no network calls or worker-derived expected hashes.
 
-This is a persistence foundation, not placement/reconciliation orchestration.
-The future coordinator must choose eligible workers before creating PUT intents.
+The transfer coordinator chooses eligible workers before creating PUT intents.
 """
 
 import json
@@ -14,7 +13,8 @@ from uuid import UUID, uuid4
 
 from common.errors import APIError
 from common.models import (
-    ChunkMetadata, ChunkReceipt, Checksum, ObjectMetadata, WorkerHeartbeat, WorkerRegistration,
+    ChunkMetadata, ChunkReceipt, Checksum, ObjectMetadata, TombstoneReceipt,
+    WorkerHeartbeat, WorkerRegistration,
 )
 
 SCHEMA = """
@@ -77,6 +77,15 @@ CREATE TABLE IF NOT EXISTS integrity_reports (
 );
 CREATE INDEX IF NOT EXISTS pending_operations ON operations(state);
 CREATE INDEX IF NOT EXISTS object_chunks ON chunks(object_id, ordinal);
+CREATE TABLE IF NOT EXISTS placement_faults (
+    chunk_id TEXT NOT NULL REFERENCES chunks(chunk_id),
+    worker_id TEXT NOT NULL REFERENCES workers(worker_id), reason TEXT NOT NULL,
+    PRIMARY KEY (chunk_id, worker_id)
+);
+CREATE TABLE IF NOT EXISTS placement_rotation (
+    singleton INTEGER PRIMARY KEY CHECK (singleton=1), cursor INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO placement_rotation VALUES (1, 0);
 """
 
 
@@ -101,10 +110,10 @@ class MetadataStore:
             self._db.execute("PRAGMA journal_mode = WAL")
             self._db.execute("PRAGMA synchronous = FULL")
             version = self._db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise RuntimeError("Unsupported controller schema version")
             self._db.executescript("BEGIN IMMEDIATE;\n" + SCHEMA
-                                   + "\nPRAGMA user_version = 1;\nCOMMIT;")
+                                   + "\nPRAGMA user_version = 2;\nCOMMIT;")
             with self.transaction() as db:
                 db.execute("UPDATE counters SET epoch = epoch + 1 WHERE singleton = 1")
                 self.epoch = db.execute("SELECT epoch FROM counters").fetchone()[0]
@@ -236,6 +245,12 @@ class MetadataStore:
                     str(report.report_id), heartbeat.worker_id, str(heartbeat.storage_id),
                     str(report.chunk_id), payload,
                 ))
+                known = db.execute("""SELECT 1 FROM chunks JOIN objects USING(object_id)
+                    WHERE chunk_id=? AND object_id=? AND generation=?""",
+                    (str(report.chunk_id), str(report.object_id), str(report.generation))).fetchone()
+                if known:
+                    db.execute("INSERT OR REPLACE INTO placement_faults VALUES (?,?,?)",
+                               (str(report.chunk_id), heartbeat.worker_id, report.outcome))
                 acknowledged.append(report.report_id)
             db.execute("""UPDATE workers SET free_bytes=?, last_heartbeat_at=?,
                 state='RECONCILING' WHERE worker_id=?""",
@@ -295,6 +310,8 @@ class MetadataStore:
             ))
             db.execute("UPDATE operations SET state = 'DONE' WHERE operation_id = ?",
                        (str(receipt.operation_id),))
+            db.execute("DELETE FROM placement_faults WHERE chunk_id=? AND worker_id=?",
+                       (str(receipt.chunk_id), receipt.worker_id))
 
     def publish_upload(self, object_id: UUID) -> None:
         """Local visibility gate; caller still owns fresh worker eligibility checks."""
@@ -351,3 +368,92 @@ class MetadataStore:
             return [dict(row) for row in self._db.execute(
                 "SELECT * FROM integrity_reports WHERE pending=1 ORDER BY report_id"
             )]
+
+    def abort_interrupted_uploads(self, worker_ids: tuple[str, ...]) -> None:
+        with self._lock:
+            ids = [r[0] for r in self._db.execute(
+                "SELECT object_id FROM objects WHERE state='UPLOADING'")]
+        for object_id in ids:
+            self.begin_deletion(UUID(object_id), worker_ids)
+
+    def cleanup_intent(self, object_id: UUID) -> dict:
+        """Re-fence old epochs once; retries in this epoch keep the same identity."""
+        with self.transaction() as db:
+            obj = self._object(db, object_id)
+            op = db.execute("""SELECT operations.* FROM tombstones JOIN operations
+                USING(operation_id) WHERE tombstones.object_id=?""", (str(object_id),)).fetchone()
+            if op is None:
+                raise conflict("identity_conflict", "No terminal cleanup intent")
+            if op["controller_epoch"] != self.epoch:
+                db.execute("UPDATE operations SET state='DONE' WHERE operation_id=?",
+                           (op["operation_id"],))
+                op = self._new_operation(db, obj, "TOMBSTONE")
+                db.execute("UPDATE tombstones SET operation_id=? WHERE object_id=?",
+                           (op["operation_id"], str(object_id)))
+            return dict(op)
+
+    def acknowledge_cleanup(self, receipt: TombstoneReceipt) -> None:
+        with self.transaction() as db:
+            op = db.execute("""SELECT operations.* FROM tombstones JOIN operations
+                USING(operation_id) WHERE tombstones.object_id=?""",
+                            (str(receipt.object_id),)).fetchone()
+            worker = db.execute("SELECT * FROM workers WHERE worker_id=?",
+                                (receipt.worker_id,)).fetchone()
+            values = receipt.model_dump(mode="json", exclude={
+                "worker_id", "storage_id", "boot_id", "cleanup_complete"})
+            if (op is None or worker is None or any(op[k] != v for k, v in values.items())
+                    or worker["storage_id"] != str(receipt.storage_id)
+                    or worker["boot_id"] != str(receipt.boot_id)
+                    or op["controller_epoch"] != self.epoch):
+                raise conflict("receipt_mismatch", "Cleanup receipt does not match current intent/boot")
+            db.execute("UPDATE cleanup SET acknowledged=1 WHERE object_id=? AND worker_id=?",
+                       (str(receipt.object_id), receipt.worker_id))
+            if not db.execute("SELECT 1 FROM cleanup WHERE object_id=? AND acknowledged=0",
+                              (str(receipt.object_id),)).fetchone():
+                db.execute("UPDATE objects SET state='DELETED' WHERE object_id=?",
+                           (str(receipt.object_id),))
+                db.execute("UPDATE operations SET state='DONE' WHERE object_id=?",
+                           (str(receipt.object_id),))
+                db.execute("""DELETE FROM replicas WHERE chunk_id IN
+                    (SELECT chunk_id FROM chunks WHERE object_id=?)""",
+                           (str(receipt.object_id),))
+
+    def worker_placements(self, worker_id: str) -> list[dict]:
+        with self._lock:
+            return [dict(r) for r in self._db.execute("""SELECT chunks.*, objects.generation,
+                objects.state, operations.operation_sequence FROM replicas
+                JOIN chunks USING(chunk_id) JOIN objects USING(object_id)
+                JOIN operations ON operations.operation_id=replicas.operation_id
+                WHERE replicas.worker_id=?""", (worker_id,))]
+
+    def inventory_authority(self, chunk_id: UUID, worker_id: str) -> dict | None:
+        with self._lock:
+            row = self._db.execute("""SELECT chunks.*, objects.generation, objects.state,
+                operations.operation_sequence FROM chunks JOIN objects USING(object_id)
+                JOIN operations USING(chunk_id) WHERE chunks.chunk_id=?
+                AND operations.worker_id=? AND operations.kind='PUT'
+                ORDER BY operations.operation_sequence DESC LIMIT 1""",
+                (str(chunk_id), worker_id)).fetchone()
+            return dict(row) if row else None
+
+    def placement_fault(self, chunk_id: UUID, worker_id: str, reason: str) -> None:
+        with self.transaction() as db:
+            db.execute("INSERT OR REPLACE INTO placement_faults VALUES (?,?,?)",
+                       (str(chunk_id), worker_id, reason))
+
+    def faulty_placements(self) -> set[tuple[str, str]]:
+        with self._lock:
+            return {(r[0], r[1]) for r in self._db.execute(
+                "SELECT chunk_id,worker_id FROM placement_faults")}
+
+    def confirm_placements(self, worker_id: str, chunk_ids: list[str]) -> None:
+        """Clear only after fresh authoritative reads and a current registry token."""
+        with self.transaction() as db:
+            db.executemany("DELETE FROM placement_faults WHERE worker_id=? AND chunk_id=?",
+                           [(worker_id, chunk_id) for chunk_id in chunk_ids])
+
+    def next_placement_cursor(self) -> int:
+        with self.transaction() as db:
+            cursor = db.execute("SELECT cursor FROM placement_rotation").fetchone()[0]
+            db.execute("UPDATE placement_rotation SET cursor=?", ((cursor + 1) % 4,))
+            return cursor

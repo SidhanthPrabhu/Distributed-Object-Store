@@ -28,6 +28,12 @@ class ControllerConfig(StorageConfig):
     unavailable_after_seconds: Annotated[float, Field(gt=0)] = 5.0
     http_timeout_seconds: Annotated[float, Field(gt=0)] = 5.0
     http_max_connections: PositiveInt = 16
+    http_attempts: Annotated[int, Field(strict=True, ge=1, le=3)] = 2
+    reconciliation_interval_seconds: Annotated[float, Field(gt=0)] = 1.0
+    inventory_max_bytes: PositiveInt = 8_000_000
+    upload_max_bytes: PositiveInt = 1_000_000_000
+    download_temp_quota_bytes: PositiveInt = 1_000_000_000
+    temporary_directory: Path | None = None
 
     @field_validator("worker_addresses")
     @classmethod
@@ -69,6 +75,12 @@ class ControllerConfig(StorageConfig):
             "UNAVAILABLE_AFTER_SECONDS": float,
             "HTTP_TIMEOUT_SECONDS": float,
             "HTTP_MAX_CONNECTIONS": int,
+            "HTTP_ATTEMPTS": int,
+            "RECONCILIATION_INTERVAL_SECONDS": float,
+            "INVENTORY_MAX_BYTES": int,
+            "UPLOAD_MAX_BYTES": int,
+            "DOWNLOAD_TEMP_QUOTA_BYTES": int,
+            "TEMPORARY_DIRECTORY": Path,
         }
         for suffix, convert in converters.items():
             name = f"OBJECT_STORE_{suffix}"

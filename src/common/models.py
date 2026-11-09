@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import (
     AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, JsonValue,
-    model_validator,
+    field_validator, model_validator,
 )
 
 WorkerID = Literal["worker1", "worker2", "worker3", "worker4"]
@@ -149,6 +149,13 @@ class ChunkReceipt(MutationHeaders, WorkerIdentity):
     sha256: SHA256
     durable: Literal[True]
 
+    @field_validator("durable", mode="before")
+    @classmethod
+    def durable_boolean(cls, value):
+        if value is not True:
+            raise ValueError("Durability must be boolean true")
+        return value
+
 
 class TombstoneRequest(WireModel):
     generation: UUID
@@ -159,6 +166,13 @@ class TombstoneRequest(WireModel):
 
 class TombstoneReceipt(MutationHeaders, WorkerIdentity):
     cleanup_complete: Literal[True]
+
+    @field_validator("cleanup_complete", mode="before")
+    @classmethod
+    def cleanup_boolean(cls, value):
+        if value is not True:
+            raise ValueError("Cleanup completion must be boolean true")
+        return value
 
 
 class Checksum(WireModel):

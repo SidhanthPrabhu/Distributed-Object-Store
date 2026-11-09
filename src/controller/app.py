@@ -1,9 +1,14 @@
 """Uvicorn factory target: controller.app:create_app."""
 
-from contextlib import asynccontextmanager
+import asyncio
+import json
+from contextlib import asynccontextmanager, suppress
+from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, Request
+from starlette.datastructures import UploadFile
+from starlette.formparsers import MultiPartException
 
 from common.config import ControllerConfig
 from common.errors import APIError, install_error_handlers
@@ -12,6 +17,7 @@ from common.models import (
 )
 from controller.metadata import MetadataStore
 from controller.registry import WorkerRegistry
+from controller.transfers import Transfers
 
 
 def create_app(config: ControllerConfig | None = None, *,
@@ -31,7 +37,16 @@ def create_app(config: ControllerConfig | None = None, *,
             ) as client:
                 app.state.http_client = client
                 app.state.registry = WorkerRegistry(store, settings)
-                yield
+                transfers = Transfers(store, app.state.registry, client, settings)
+                app.state.transfers = transfers
+                store.abort_interrupted_uploads(tuple(settings.worker_addresses))
+                maintenance = asyncio.create_task(transfers.run())
+                try:
+                    yield
+                finally:
+                    maintenance.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await maintenance
         finally:
             store.close()
 
@@ -55,11 +70,53 @@ def create_app(config: ControllerConfig | None = None, *,
         return {"status": "ready", "controller_epoch": store.epoch}
 
     @app.post("/internal/workers/register", response_model=RegistrationResponse)
-    def register(identity: WorkerRegistration, request: Request):
-        return request.app.state.registry.register(identity)
+    async def register(identity: WorkerRegistration, request: Request):
+        result = request.app.state.registry.register(identity)
+        request.app.state.transfers.wake.set()
+        return result
 
     @app.post("/internal/workers/heartbeat", response_model=HeartbeatResponse)
-    def heartbeat(message: WorkerHeartbeat, request: Request):
-        return request.app.state.registry.heartbeat(message)
+    async def heartbeat(message: WorkerHeartbeat, request: Request):
+        result = request.app.state.registry.heartbeat(message)
+        request.app.state.transfers.wake.set()
+        return result
+
+    @app.post("/api/v1/objects", status_code=201)
+    async def upload(request: Request):
+        # Bound the multipart request before parsing/spooling. Starlette closes
+        # partial spool files on MultiPartException, including this body limit.
+        consumed = 0
+
+        async def limited_receive():
+            nonlocal consumed
+            message = await request.receive()
+            consumed += len(message.get("body", b""))
+            if consumed > settings.upload_max_bytes + 64 * 1024:
+                raise MultiPartException("Upload exceeds configured request limit")
+            return message
+
+        bounded = Request(request.scope, limited_receive)
+        async with bounded.form(max_files=1, max_fields=1, max_part_size=64 * 1024) as form:
+            if (set(form) - {"file", "metadata"} or len(form.getlist("file")) != 1
+                    or len(form.getlist("metadata")) > 1
+                    or not isinstance(form.get("file"), UploadFile)):
+                raise APIError(400, "invalid_request", "Expected one multipart file and optional metadata")
+            file = form["file"]
+            if any(c in (file.content_type or "") for c in "\r\n"):
+                raise APIError(400, "invalid_request", "Invalid file content type")
+            raw = form.get("metadata", "{}")
+            try:
+                metadata = json.loads(raw, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+                if not isinstance(metadata, dict):
+                    raise ValueError()
+                # A JSON exponent can overflow float without invoking parse_constant.
+                json.dumps(metadata, allow_nan=False)
+            except (ValueError, TypeError, RecursionError):
+                raise APIError(400, "invalid_request", "Metadata must be a JSON object") from None
+            return await request.app.state.transfers.upload(file, metadata)
+
+    @app.get("/api/v1/objects/{object_id}")
+    async def download(object_id: UUID, request: Request):
+        return await request.app.state.transfers.download(object_id)
 
     return app
