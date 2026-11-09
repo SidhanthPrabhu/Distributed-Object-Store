@@ -2,6 +2,7 @@
 
 import logging
 import os
+import shutil
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -14,7 +15,7 @@ from uuid import UUID, uuid4
 from common.errors import APIError
 from common.models import (
     ChunkPutHeaders, ChunkReadHeaders, ChunkReceipt, InventoryChunk,
-    MutationHeaders, WorkerIdentity, WorkerInventory,
+    MutationHeaders, TombstoneReceipt, TombstoneRequest, WorkerIdentity, WorkerInventory,
 )
 from worker.config import WorkerConfig
 
@@ -45,6 +46,24 @@ CREATE TABLE IF NOT EXISTS placements (
         state IN ('pending_put', 'pending_delete', 'valid', 'missing', 'corrupt', 'retired')
     ),
     last_verified_at TEXT
+);
+CREATE INDEX IF NOT EXISTS placements_by_generation ON placements(object_id, generation);
+CREATE TABLE IF NOT EXISTS object_tombstones (
+    object_id TEXT NOT NULL,
+    generation TEXT NOT NULL,
+    operation_id TEXT NOT NULL UNIQUE,
+    controller_epoch INTEGER NOT NULL,
+    operation_sequence INTEGER NOT NULL UNIQUE,
+    cleanup_complete INTEGER NOT NULL DEFAULT 0 CHECK (cleanup_complete IN (0, 1)),
+    PRIMARY KEY (object_id, generation)
+);
+CREATE TABLE IF NOT EXISTS tombstone_history (
+    object_id TEXT NOT NULL,
+    generation TEXT NOT NULL,
+    operation_id TEXT NOT NULL UNIQUE,
+    controller_epoch INTEGER NOT NULL,
+    operation_sequence INTEGER PRIMARY KEY,
+    FOREIGN KEY (object_id, generation) REFERENCES object_tombstones(object_id, generation)
 );
 """
 
@@ -83,6 +102,7 @@ class ChunkStore:
             )
             sync_directory(config.data_dir)
             sync_directory(config.data_dir.parent)
+            self._recover_tombstones()
             self._recover()
         except BaseException:
             self._db.close()
@@ -111,12 +131,38 @@ class ChunkStore:
             "SELECT * FROM placements WHERE chunk_id = ?", (chunk_id,),
         ).fetchone()
 
+    def free_bytes(self) -> int:
+        with self._access():
+            return shutil.disk_usage(self._chunks).free
+
+    def _check_epoch(self, epoch: int) -> None:
+        current = self._db.execute("SELECT controller_epoch FROM worker").fetchone()[0]
+        if epoch < current:
+            raise APIError(409, "stale_mutation", "Controller epoch has been superseded")
+
+    def _advance_epoch(self, epoch: int) -> None:
+        self._db.execute("UPDATE worker SET controller_epoch = ? WHERE controller_epoch < ?", (epoch, epoch))
+
+    def observe_controller_epoch(self, epoch: int) -> None:
+        """Fence old mutations as soon as the worker hears from a new controller boot."""
+        with self._access(), self._db:
+            self._check_epoch(epoch)
+            self._advance_epoch(epoch)
+
+    def _tombstone_operations(self, operation_id: str, sequence: int) -> list[sqlite3.Row]:
+        return self._db.execute(
+            """SELECT object_id, generation, operation_id, controller_epoch, operation_sequence
+               FROM object_tombstones WHERE operation_id = ? OR operation_sequence = ?
+               UNION ALL
+               SELECT object_id, generation, operation_id, controller_epoch, operation_sequence
+               FROM tombstone_history WHERE operation_id = ? OR operation_sequence = ?""",
+            (operation_id, sequence, operation_id, sequence),
+        ).fetchall()
+
     def _check_mutation(self, chunk_id: str, headers: MutationHeaders, kind: str,
                         row: sqlite3.Row | None) -> bool:
         """Return whether this is a retry of the current placement mutation."""
-        epoch = self._db.execute("SELECT controller_epoch FROM worker").fetchone()[0]
-        if headers.controller_epoch < epoch:
-            raise APIError(409, "stale_mutation", "Controller epoch has been superseded")
+        self._check_epoch(headers.controller_epoch)
         if row is not None:
             if headers.operation_sequence < row["operation_sequence"]:
                 raise APIError(409, "stale_mutation", "Placement mutation has been superseded")
@@ -125,6 +171,8 @@ class ChunkStore:
             ):
                 raise APIError(409, "identity_conflict", "Chunk belongs to a different object generation")
 
+        if self._tombstone_operations(str(headers.operation_id), headers.operation_sequence):
+            raise APIError(409, "operation_conflict", "Mutation identity was already used")
         previous = self._db.execute(
             """SELECT operation_sequence, operation_id, controller_epoch, chunk_id, kind
                FROM operations WHERE operation_sequence = ? OR operation_id = ?""",
@@ -140,9 +188,9 @@ class ChunkStore:
 
     def _begin(self, chunk_id: str, headers: MutationHeaders, kind: str,
                length: int | None, digest: str | None) -> None:
-        # The mutation and its fence must reach disk before the rename or unlink.
+        # Journal ownership before creating a staging file or removing files.
         with self._db:
-            self._db.execute("UPDATE worker SET controller_epoch = ?", (headers.controller_epoch,))
+            self._advance_epoch(headers.controller_epoch)
             self._db.execute(
                 "INSERT INTO operations VALUES (?, ?, ?, ?, ?)",
                 (headers.operation_sequence, str(headers.operation_id),
@@ -184,11 +232,36 @@ class ChunkStore:
         sync_directory(self._chunks)
         self._set_state(chunk_id, "valid")
 
-    def _retire(self, chunk_id: str) -> None:
+    def _remove_files(self, chunk_id: str) -> None:
         self._path(chunk_id).unlink(missing_ok=True)
         self._stage(chunk_id).unlink(missing_ok=True)
+
+    def _retire(self, chunk_id: str) -> None:
+        self._remove_files(chunk_id)
         sync_directory(self._chunks)
         self._set_state(chunk_id, "retired")
+
+    def _finish_tombstone(self, object_id: str, generation: str) -> None:
+        rows = self._db.execute(
+            "SELECT chunk_id FROM placements WHERE object_id = ? AND generation = ?",
+            (object_id, generation),
+        )
+        for row in rows:
+            self._remove_files(row["chunk_id"])
+        sync_directory(self._chunks)
+        with self._db:
+            self._db.execute(
+                """UPDATE object_tombstones SET cleanup_complete = 1
+                   WHERE object_id = ? AND generation = ?""",
+                (object_id, generation),
+            )
+
+    def _recover_tombstones(self) -> None:
+        pending = self._db.execute(
+            "SELECT object_id, generation FROM object_tombstones WHERE cleanup_complete = 0",
+        ).fetchall()
+        for row in pending:
+            self._finish_tombstone(row["object_id"], row["generation"])
 
     def _recover(self) -> None:
         rows = self._db.execute(
@@ -218,6 +291,11 @@ class ChunkStore:
             raise APIError(400, "invalid_chunk_checksum", "Chunk body does not match the expected SHA-256")
         key = str(chunk_id)
         with self._access():
+            if self._db.execute(
+                "SELECT 1 FROM object_tombstones WHERE object_id = ? AND generation = ?",
+                (str(headers.object_id), str(headers.generation)),
+            ).fetchone() is not None:
+                raise APIError(409, "object_tombstoned", "Object generation has been deleted")
             row = self._placement(key)
             retry = self._check_mutation(key, headers, "put", row)
             expected = (headers.length_bytes, headers.sha256)
@@ -229,13 +307,13 @@ class ChunkStore:
                 # A completed operation can only be replayed against a checked copy.
                 self._read_checked(key, *expected)
             else:
+                if not retry:
+                    self._begin(key, headers, "put", *expected)
                 with self._stage(key).open("wb") as staged:
                     staged.write(data)
                     staged.flush()
                     os.fsync(staged.fileno())
                 sync_directory(self._chunks)
-                if not retry:
-                    self._begin(key, headers, "put", *expected)
                 self._publish(key)
 
             return ChunkReceipt(
@@ -274,6 +352,61 @@ class ChunkStore:
                 self._begin(key, headers, "delete", None, None)
             if not retry or row["state"] != "retired":
                 self._retire(key)
+
+    def tombstone(self, object_id: UUID, headers: TombstoneRequest) -> TombstoneReceipt:
+        key = str(object_id), str(headers.generation)
+        operation_id, sequence = str(headers.operation_id), headers.operation_sequence
+        operation = (*key, operation_id, headers.controller_epoch, sequence)
+        with self._access():
+            previous = self._tombstone_operations(operation_id, sequence)
+            if previous and (len(previous) != 1 or tuple(previous[0]) != operation):
+                raise APIError(409, "operation_conflict", "Tombstone identity was already used")
+            fence = self._db.execute(
+                "SELECT * FROM object_tombstones WHERE object_id = ? AND generation = ?", key,
+            ).fetchone()
+            if not previous:
+                if self._db.execute(
+                    "SELECT 1 FROM operations WHERE operation_id = ? OR operation_sequence = ?",
+                    (operation_id, sequence),
+                ).fetchone() is not None:
+                    raise APIError(409, "operation_conflict", "Mutation identity was already used")
+                if fence is not None and (
+                    headers.controller_epoch <= fence["controller_epoch"] or sequence <= fence["operation_sequence"]
+                ):
+                    raise APIError(409, "operation_conflict", "Tombstone reissue must advance the epoch and sequence")
+                # A terminal intent remains authoritative across controller boots.
+                # A worker that was offline may see it for the first time after rejoin.
+                with self._db:
+                    self._advance_epoch(headers.controller_epoch)
+                    if fence is not None:
+                        self._db.execute(
+                            """INSERT INTO tombstone_history
+                               SELECT object_id, generation, operation_id, controller_epoch, operation_sequence
+                               FROM object_tombstones WHERE object_id = ? AND generation = ?""",
+                            key,
+                        )
+                    self._db.execute(
+                        """INSERT INTO object_tombstones
+                           (object_id, generation, operation_id, controller_epoch, operation_sequence)
+                           VALUES (?, ?, ?, ?, ?)
+                           ON CONFLICT(object_id, generation) DO UPDATE SET
+                               operation_id = excluded.operation_id,
+                               controller_epoch = excluded.controller_epoch,
+                               operation_sequence = excluded.operation_sequence""",
+                        operation,
+                    )
+                    if fence is None:
+                        self._db.execute(
+                            """UPDATE placements SET state = 'retired'
+                               WHERE object_id = ? AND generation = ?""",
+                            key,
+                        )
+            if fence is None or not fence["cleanup_complete"]:
+                self._finish_tombstone(*key)
+            return TombstoneReceipt(
+                object_id=object_id, **headers.model_dump(), **self.identity.model_dump(),
+                cleanup_complete=True,
+            )
 
     def inventory(self) -> WorkerInventory:
         with self._access():

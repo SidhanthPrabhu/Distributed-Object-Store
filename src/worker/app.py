@@ -1,16 +1,20 @@
 """Uvicorn factory target: worker.app:create_app."""
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from uuid import UUID
 
+import httpx
 from fastapi import FastAPI, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from common.errors import APIError, install_error_handlers
 from common.models import (
-    ChunkPutHeaders, ChunkReadHeaders, ChunkReceipt, MutationHeaders, WireModel, WorkerInventory,
+    ChunkPutHeaders, ChunkReadHeaders, ChunkReceipt, MutationHeaders, TombstoneReceipt,
+    TombstoneRequest, WireModel, WorkerInventory,
 )
 from worker.config import WorkerConfig
+from worker.membership import Membership
 from worker.store import ChunkStore
 
 MUTATION_HEADERS = {
@@ -50,15 +54,32 @@ def parse_headers[Model: WireModel](
         raise APIError(400, "invalid_request", "Invalid or missing chunk headers") from exc
 
 
-def create_app(config: WorkerConfig | None = None) -> FastAPI:
+def create_app(config: WorkerConfig | None = None, *,
+               http_transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
     settings = config if config is not None else WorkerConfig.from_env()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         store = ChunkStore(settings)
         app.state.store = store
+        app.state.membership = None
         try:
-            yield
+            if settings.controller_url is None:
+                yield
+                return
+            async with httpx.AsyncClient(
+                base_url=str(settings.controller_url), trust_env=False, transport=http_transport,
+            ) as client:
+                membership = Membership(store, client)
+                app.state.membership = membership
+                task = asyncio.create_task(membership.run())
+                try:
+                    yield
+                finally:
+                    task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await task
+                    app.state.membership = None
         finally:
             store.close()
 
@@ -71,8 +92,11 @@ def create_app(config: WorkerConfig | None = None) -> FastAPI:
         return {"status": "live"}
 
     @app.get("/health/ready")
-    def ready():
-        raise APIError(503, "worker_not_ready", "Waiting for worker registration and reconciliation")
+    async def ready(request: Request):
+        membership = getattr(request.app.state, "membership", None)
+        if membership is None or not membership.ready:
+            raise APIError(503, "worker_not_ready", "Waiting for worker registration and reconciliation")
+        return {"status": "ready"}
 
     @app.put("/internal/chunks/{chunk_id}", response_model=ChunkReceipt)
     async def put(chunk_id: UUID, request: Request):
@@ -99,6 +123,10 @@ def create_app(config: WorkerConfig | None = None) -> FastAPI:
         headers = parse_headers(request, MutationHeaders, MUTATION_HEADERS)
         request.app.state.store.delete(chunk_id, headers)
         return Response(status_code=204)
+
+    @app.post("/internal/objects/{object_id}/tombstone", response_model=TombstoneReceipt)
+    def tombstone(object_id: UUID, message: TombstoneRequest, request: Request):
+        return request.app.state.store.tombstone(object_id, message)
 
     @app.get("/internal/workers/{worker_id}/chunks", response_model=WorkerInventory)
     def inventory(worker_id: str, request: Request):

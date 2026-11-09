@@ -17,6 +17,7 @@ x-worker: &worker
 
 x-worker-environment: &worker-environment
   OBJECT_STORE_WORKER_DATA_DIR: /data
+  OBJECT_STORE_CONTROLLER_URL: http://controller:8000
 
 services:
   controller:

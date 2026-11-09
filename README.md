@@ -1,6 +1,6 @@
 # Distributed Object Store
 
-The controller and worker foundations are in review. The five-service Compose deployment starts and persists worker chunks across restart. Automatic registration, controller reconciliation, and public object APIs are pending.
+The five-service Compose deployment passed the C1 technical checks with A2/A3 and B2/B3 together. All four workers reached readiness, and a public upload/download verified two copies of each chunk and survived worker and controller restarts. Joint review is pending.
 
 Start with the [two-person implementation plan](TEAM-PLAN.md): the repository owner implements the controller, metadata, client-facing APIs, and repair coordination; their teammate implements worker storage, heartbeats, integrity scanning, deployment, and demo tools. Both review and verify the integrated system.
 
@@ -11,7 +11,7 @@ Start with the [two-person implementation plan](TEAM-PLAN.md): the repository ow
 | [Progress tracker](docs/COURSE-TRACKER.md) | Actual task status, dependencies, evidence, demo sign-off, and decisions |
 | [Course contract](docs/COURSE-CONTRACT.md) | Shared controller/worker messages and API behavior for parallel development |
 | [Controller foundation handoff](docs/CONTROLLER-FOUNDATION.md) | Available shared imports, configuration, 56 local checks, and remaining A2/B1–B3 dependencies |
-| [Worker and deployment foundation](docs/WORKER-FOUNDATION.md) | Locked setup, Compose commands, restart evidence, and remaining B1–B3 integration |
+| [Worker and deployment foundation](docs/WORKER-FOUNDATION.md) | Locked setup, Compose commands, registration, storage recovery, and C1 integration evidence |
 | [Compiled assignment checklist](docs/ASSIGNMENT-REQUIREMENTS.md) | All original requirements in one readable place, with PDF pages, section names, and task owners |
 | [Codex starting prompts](docs/CODEX-START.md) | Copy-and-paste prompts for each teammate and later task continuation |
 | [GitHub workflow](docs/GITHUB-START.md) | Direct-main commit/push commands and teammate synchronization |

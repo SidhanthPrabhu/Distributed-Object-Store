@@ -6,7 +6,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from common.errors import APIError
-from common.models import ChunkPutHeaders, ChunkReadHeaders, ChunkReceipt, MutationHeaders, WorkerInventory
+from common.models import (
+    ChunkPutHeaders, ChunkReadHeaders, ChunkReceipt, MutationHeaders,
+    TombstoneReceipt, TombstoneRequest, WorkerInventory,
+)
 from worker.app import create_app
 from worker.config import WorkerConfig
 from worker.store import ChunkStore
@@ -35,6 +38,13 @@ def next_mutation(put, sequence):
 
 def later_put(put, sequence):
     return put.model_copy(update={"operation_id": uuid4(), "operation_sequence": sequence})
+
+
+def tombstone_request(put, sequence):
+    return TombstoneRequest(
+        generation=put.generation, operation_id=uuid4(),
+        controller_epoch=put.controller_epoch, operation_sequence=sequence,
+    )
 
 
 @pytest.fixture
@@ -273,3 +283,140 @@ def test_interrupted_delete_is_reconciled(config, monkeypatch):
             recovered.put(chunk_id, put, DATA)
     finally:
         recovered.close()
+
+
+def test_tombstone_route_removes_only_target_generation(config):
+    put = put_headers()
+    other = later_put(put, 3).model_copy(update={"generation": uuid4()})
+    targets = [uuid4(), uuid4()]
+    survivor = uuid4()
+    tombstone = tombstone_request(put, 4)
+    with TestClient(create_app(config)) as client:
+        for chunk_id, headers in zip([*targets, survivor], [put, later_put(put, 2), other]):
+            response = client.put(
+                f"/internal/chunks/{chunk_id}", content=DATA,
+                headers={**headers.to_headers(), "Content-Type": "application/octet-stream"},
+            )
+            assert response.status_code == 200
+
+        route = f"/internal/objects/{put.object_id}/tombstone"
+        response = client.post(route, json=tombstone.model_dump(mode="json"))
+        assert response.status_code == 200
+        receipt = TombstoneReceipt.model_validate(response.json())
+        assert receipt.cleanup_complete and receipt.object_id == put.object_id
+        assert receipt.operation_id == tombstone.operation_id and receipt.worker_id == config.worker_id
+        assert client.post(route, json=tombstone.model_dump(mode="json")).json() == response.json()
+        for chunk_id in targets:
+            assert client.get(
+                f"/internal/chunks/{chunk_id}", headers=read_headers(put).to_headers(),
+            ).status_code == 404
+        inventory = WorkerInventory.model_validate(
+            client.get("/internal/workers/worker2/chunks").json(),
+        )
+        assert [entry.chunk_id for entry in inventory.chunks] == [survivor]
+        assert list((config.data_dir / "chunks").iterdir()) == [
+            config.data_dir / "chunks" / f"{survivor}.bin",
+        ]
+        late = later_put(put, 5)
+        response = client.put(
+            f"/internal/chunks/{uuid4()}", content=DATA,
+            headers={**late.to_headers(), "Content-Type": "application/octet-stream"},
+        )
+        assert response.status_code == 409 and response.json()["error"]["code"] == "object_tombstoned"
+
+
+def test_tombstone_for_absent_object_and_old_controller_epoch(config):
+    put = put_headers()
+    tombstone = tombstone_request(put, 2)
+    store = ChunkStore(config)
+    try:
+        identity = store.identity
+        store.observe_controller_epoch(2)
+        # A2 can replay the original durable deletion even if this worker never saw it.
+        assert store.tombstone(put.object_id, tombstone).cleanup_complete
+        with pytest.raises(APIError, match="Tombstone identity"):
+            store.tombstone(uuid4(), tombstone)
+    finally:
+        store.close()
+
+    restarted = ChunkStore(config)
+    try:
+        receipt = restarted.tombstone(put.object_id, tombstone)
+        assert receipt.storage_id == identity.storage_id and receipt.boot_id != identity.boot_id
+        with pytest.raises(APIError, match="Controller epoch has been superseded"):
+            restarted.put(uuid4(), put_headers(), DATA)
+        late = later_put(put, 3).model_copy(update={"controller_epoch": 3})
+        with pytest.raises(APIError) as error:
+            restarted.put(uuid4(), late, DATA)
+        assert error.value.code == "object_tombstoned"
+    finally:
+        restarted.close()
+
+
+def test_mutation_identity_is_shared_between_chunks_and_tombstones(store):
+    put = put_headers()
+    store.put(uuid4(), put, DATA)
+    with pytest.raises(APIError, match="Mutation identity"):
+        store.tombstone(put.object_id, tombstone_request(put, 1))
+
+    tombstone = tombstone_request(put, 2)
+    store.tombstone(put.object_id, tombstone)
+    another = put_headers().model_copy(update={"operation_sequence": 2})
+    with pytest.raises(APIError, match="Mutation identity"):
+        store.put(uuid4(), another, DATA)
+
+
+def test_controller_can_reissue_tombstone_in_new_epoch(store):
+    put = put_headers()
+    original = tombstone_request(put, 2)
+    first = store.tombstone(put.object_id, original)
+    store.observe_controller_epoch(2)
+    with pytest.raises(APIError, match="must advance the epoch and sequence"):
+        store.tombstone(put.object_id, tombstone_request(put, 3))
+    current = tombstone_request(put, 4).model_copy(update={"controller_epoch": 2})
+    refreshed = store.tombstone(put.object_id, current)
+    assert refreshed.cleanup_complete and refreshed.operation_id == current.operation_id
+    assert refreshed.controller_epoch == 2 and refreshed.operation_sequence == 4
+    assert store.tombstone(put.object_id, current) == refreshed
+    assert store.tombstone(put.object_id, original) == first
+    reused = put_headers().model_copy(update={"operation_sequence": 2, "controller_epoch": 2})
+    with pytest.raises(APIError, match="Mutation identity"):
+        store.put(uuid4(), reused, DATA)
+    late = later_put(put, 5).model_copy(update={"controller_epoch": 2})
+    with pytest.raises(APIError, match="has been deleted"):
+        store.put(uuid4(), late, DATA)
+
+
+def test_interrupted_tombstone_hides_chunks_and_recovers_pending_files(config, monkeypatch):
+    put = put_headers()
+    first, staged = uuid4(), uuid4()
+    tombstone = tombstone_request(put, 3)
+    store = ChunkStore(config)
+    try:
+        store.put(first, put, DATA)
+        with monkeypatch.context() as patch:
+            patch.setattr(store, "_publish", interrupt)
+            with pytest.raises(APIError):
+                store.put(staged, later_put(put, 2), DATA)
+        paths = config.data_dir / "chunks"
+        assert (paths / f"{staged}.stage").exists()
+        monkeypatch.setattr(store, "_remove_files", interrupt)
+        with pytest.raises(APIError) as error:
+            store.tombstone(put.object_id, tombstone)
+        assert error.value.status_code == 503
+        assert store.inventory().chunks == []
+        for chunk_id in (first, staged):
+            with pytest.raises(APIError) as error:
+                store.get(chunk_id, read_headers(put))
+            assert error.value.code == "chunk_missing"
+    finally:
+        store.close()
+
+    restarted = ChunkStore(config)
+    try:
+        assert list(paths.iterdir()) == []
+        assert restarted.tombstone(put.object_id, tombstone).cleanup_complete
+        with pytest.raises(APIError, match="has been deleted"):
+            restarted.put(staged, later_put(put, 4), DATA)
+    finally:
+        restarted.close()
