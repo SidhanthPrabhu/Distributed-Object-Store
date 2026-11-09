@@ -1,6 +1,6 @@
 # Distributed Object Store
 
-Controller foundation implemented for A1 and the independent part of A2; awaiting review. Worker storage, packaging/deployment, public object APIs, and real-service integration remain pending.
+The controller and worker foundations are in review. The five-service Compose deployment starts and persists worker chunks across restart. Automatic registration, controller reconciliation, and public object APIs are pending.
 
 Start with the [two-person implementation plan](TEAM-PLAN.md): the repository owner implements the controller, metadata, client-facing APIs, and repair coordination; their teammate implements worker storage, heartbeats, integrity scanning, deployment, and demo tools. Both review and verify the integrated system.
 
@@ -11,11 +11,12 @@ Start with the [two-person implementation plan](TEAM-PLAN.md): the repository ow
 | [Progress tracker](docs/COURSE-TRACKER.md) | Actual task status, dependencies, evidence, demo sign-off, and decisions |
 | [Course contract](docs/COURSE-CONTRACT.md) | Shared controller/worker messages and API behavior for parallel development |
 | [Controller foundation handoff](docs/CONTROLLER-FOUNDATION.md) | Available shared imports, configuration, 56 local checks, and remaining A2/B1–B3 dependencies |
+| [Worker and deployment foundation](docs/WORKER-FOUNDATION.md) | Locked setup, Compose commands, restart evidence, and remaining B1–B3 integration |
 | [Compiled assignment checklist](docs/ASSIGNMENT-REQUIREMENTS.md) | All original requirements in one readable place, with PDF pages, section names, and task owners |
 | [Codex starting prompts](docs/CODEX-START.md) | Copy-and-paste prompts for each teammate and later task continuation |
 | [GitHub workflow](docs/GITHUB-START.md) | Direct-main commit/push commands and teammate synchronization |
 
-A1 and the A2 foundation are IN REVIEW. B1/B2 can consume the shared models while the controller continues inventory/reconciliation work. Local controller check commands and tested versions are recorded in the handoff above; packaging, deployment, and demos are not yet available. Joint milestone gates remain open. GitHub task and pull-request templates are included under `.github/`.
+See the tracker for task status, review, and joint milestone gates. GitHub task and pull-request templates are included under `.github/`.
 
 Repository-wide agent instructions live in [AGENTS.md](AGENTS.md). In every planning document, **You** means the controller owner and **Friend** means the worker/deployment teammate, regardless of who opens Codex.
 

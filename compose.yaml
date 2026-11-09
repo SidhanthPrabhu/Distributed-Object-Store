@@ -1,0 +1,72 @@
+x-service: &service
+  build: .
+  image: course-distributed-object-store:local
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2).close()"]
+    interval: 5s
+    timeout: 3s
+    retries: 5
+    start_period: 5s
+
+x-worker: &worker
+  <<: *service
+  command: ["uvicorn", "worker.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+  depends_on:
+    controller:
+      condition: service_healthy
+
+x-worker-environment: &worker-environment
+  OBJECT_STORE_WORKER_DATA_DIR: /data
+
+services:
+  controller:
+    <<: *service
+    environment:
+      OBJECT_STORE_DATABASE_PATH: /data/metadata.sqlite3
+    ports:
+      - "127.0.0.1:${OBJECT_STORE_PORT:-8000}:8000"
+    volumes:
+      - controller-data:/data
+
+  worker1:
+    <<: *worker
+    container_name: worker1
+    environment:
+      <<: *worker-environment
+      OBJECT_STORE_WORKER_ID: worker1
+    volumes:
+      - worker1-data:/data
+
+  worker2:
+    <<: *worker
+    container_name: worker2
+    environment:
+      <<: *worker-environment
+      OBJECT_STORE_WORKER_ID: worker2
+    volumes:
+      - worker2-data:/data
+
+  worker3:
+    <<: *worker
+    container_name: worker3
+    environment:
+      <<: *worker-environment
+      OBJECT_STORE_WORKER_ID: worker3
+    volumes:
+      - worker3-data:/data
+
+  worker4:
+    <<: *worker
+    container_name: worker4
+    environment:
+      <<: *worker-environment
+      OBJECT_STORE_WORKER_ID: worker4
+    volumes:
+      - worker4-data:/data
+
+volumes:
+  controller-data:
+  worker1-data:
+  worker2-data:
+  worker3-data:
+  worker4-data:
