@@ -1,6 +1,6 @@
 # Course implementation tracker
 
-Last updated 9 November 2026. **The C1 technical gate passed with A2/A3 and B2/B3 together. Joint review is pending.** Owners are role labels until GitHub handles are added. Update this file as implementation proceeds and link to commits, issues, or check results.
+Last updated 9 November 2026. **C0 and C1 are DONE: real-service checks passed and both reviews were confirmed by the repository owner on 9 November 2026.** Owners are role labels until GitHub handles are added. Update this file as implementation proceeds and link to commits, issues, or check results.
 
 Allowed statuses: **TODO**, **IN PROGRESS**, **IN REVIEW**, **BLOCKED**, **DONE**. A card becomes DONE only after its acceptance checks pass and the other person reviews it. A blocker must name the missing dependency or failing behavior.
 
@@ -23,11 +23,13 @@ Allowed statuses: **TODO**, **IN PROGRESS**, **IN REVIEW**, **BLOCKED**, **DONE*
 
 | Milestone | Status | Target date | Evidence |
 |---|---|---|---|
-| C0: reviewed contract, building services, durable chunk | TODO | Unassigned | — |
-| C1: distributed two-copy upload/download | IN REVIEW | Unassigned | Technical gate passed with controller commit `15df687` and B2/B3. Five readiness 200 responses, a 2,000,123-byte public round trip, six verified copies, and successful restart/reconciliation checks. [Verification](WORKER-FOUNDATION.md). Joint review pending. |
+| C0: reviewed contract, building services, durable chunk | DONE | Unassigned | 9 Nov 2026: integrated commit `c8b8ca0` includes controller `15df687` and B1/B2/B3. Combined suite: 132 passed, one existing deprecation warning (owner-provided terminal output). Compose configuration/build/start passed; five services recovered readiness after restart. Real durable chunk and restart evidence in [worker handoff](WORKER-FOUNDATION.md). Owner confirmed both reviews in chat on 9 Nov 2026. |
+| C1: distributed two-copy upload/download | DONE | Unassigned | 9 Nov 2026, integrated commit `c8b8ca0`: owner independently verified all four workers ready, a 2,000,123-byte public upload/download, three chunks and six checked copies on distinct worker pairs. Object `d8e9f45f-3901-445e-b779-14aea78f79dc`; SHA-256 `97468f3f77340f797146e716d0ff29519ee826d15e23c8b6fbfdbc0b3ed4c736`. Owner reported all five services ready and the same object/hash intact after restart. Friend also recorded inventory, individual-copy, worker/controller restart and pending-cleanup checks in [worker handoff](WORKER-FOUNDATION.md). Both reviews confirmed by owner in chat. |
 | C2: all required APIs and errors | TODO | Unassigned | — |
 | C3: failure, corruption, repair, rejoin | TODO | Unassigned | — |
 | C4: checked submission and course release | TODO | Unassigned | — |
+
+C0/C1 review sign-off: on 9 November 2026 the repository owner confirmed review of Friend's B1/B2/B3 changes and Friend's review of the owner's A2/A3 changes. This confirmation supersedes earlier pending-review notes for these milestone gates. Owner-run acceptance results above were supplied in this chat; the agent did not rerun those service checks during this documentation update. Card-level acceptance and the later C2/C3/C4 gates remain separate.
 
 ## Assignment demonstration sign-off
 
