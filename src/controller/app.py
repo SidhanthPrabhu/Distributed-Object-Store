@@ -6,18 +6,36 @@ from contextlib import asynccontextmanager, suppress
 from uuid import UUID
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
+from pydantic import JsonValue, TypeAdapter, ValidationError
+from python_multipart.exceptions import MultipartParseError
 from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException
 
 from common.config import ControllerConfig
 from common.errors import APIError, install_error_handlers
 from common.models import (
-    HeartbeatResponse, RegistrationResponse, WorkerHeartbeat, WorkerRegistration,
+    HeartbeatResponse, ObjectList, ObjectMetadata, RegistrationResponse, WorkerHeartbeat, WorkerRegistration,
 )
 from controller.metadata import MetadataStore
 from controller.registry import WorkerRegistry
 from controller.transfers import Transfers
+
+
+_CUSTOM_METADATA = TypeAdapter(dict[str, JsonValue])
+
+
+def custom_metadata(raw) -> dict:
+    """Both upload and PATCH accept a direct JSON map, including nested values."""
+    try:
+        value = json.loads(raw, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+        if not isinstance(value, dict):
+            raise ValueError()
+        # JSON exponents can overflow without invoking parse_constant.
+        json.dumps(value, allow_nan=False)
+        return _CUSTOM_METADATA.validate_python(value)
+    except (ValueError, TypeError, RecursionError, ValidationError):
+        raise APIError(400, "invalid_request", "Metadata must be a JSON object") from None
 
 
 def create_app(config: ControllerConfig | None = None, *,
@@ -54,6 +72,11 @@ def create_app(config: ControllerConfig | None = None, *,
     app.state.config = settings
     install_error_handlers(app)
 
+    @app.exception_handler(MultipartParseError)
+    async def malformed_multipart(request: Request, exc: MultipartParseError):
+        from common.errors import error_response
+        return error_response(request, 400, "invalid_request", "Malformed multipart request")
+
     @app.get("/health/live")
     def live():
         return {"status": "live"}
@@ -81,7 +104,7 @@ def create_app(config: ControllerConfig | None = None, *,
         request.app.state.transfers.wake.set()
         return result
 
-    @app.post("/api/v1/objects", status_code=201)
+    @app.post("/api/v1/objects", status_code=201, response_model=ObjectMetadata)
     async def upload(request: Request):
         # Bound the multipart request before parsing/spooling. Starlette closes
         # partial spool files on MultiPartException, including this body limit.
@@ -104,16 +127,32 @@ def create_app(config: ControllerConfig | None = None, *,
             file = form["file"]
             if any(c in (file.content_type or "") for c in "\r\n"):
                 raise APIError(400, "invalid_request", "Invalid file content type")
-            raw = form.get("metadata", "{}")
-            try:
-                metadata = json.loads(raw, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
-                if not isinstance(metadata, dict):
-                    raise ValueError()
-                # A JSON exponent can overflow float without invoking parse_constant.
-                json.dumps(metadata, allow_nan=False)
-            except (ValueError, TypeError, RecursionError):
-                raise APIError(400, "invalid_request", "Metadata must be a JSON object") from None
+            metadata = custom_metadata(form.get("metadata", "{}"))
             return await request.app.state.transfers.upload(file, metadata)
+
+    @app.get("/api/v1/objects", response_model=ObjectList)
+    def list_objects(request: Request):
+        return ObjectList(objects=request.app.state.store.list_objects())
+
+    @app.get("/api/v1/objects/{object_id}/metadata", response_model=ObjectMetadata)
+    def metadata(object_id: UUID, request: Request):
+        return request.app.state.store.get_manifest(object_id)
+
+    @app.patch("/api/v1/objects/{object_id}/metadata", response_model=ObjectMetadata)
+    async def patch_metadata(object_id: UUID, request: Request):
+        if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+            raise APIError(400, "invalid_request", "Expected application/json metadata")
+        body = bytearray()
+        async for part in request.stream():
+            if len(body) + len(part) > 64 * 1024:
+                raise APIError(400, "invalid_request", "Metadata request exceeds 64 KiB")
+            body.extend(part)
+        return request.app.state.store.patch_metadata(object_id, custom_metadata(body))
+
+    @app.delete("/api/v1/objects/{object_id}", status_code=204)
+    async def delete(object_id: UUID, request: Request):
+        await request.app.state.transfers.delete(object_id)
+        return Response(status_code=204)
 
     @app.get("/api/v1/objects/{object_id}")
     async def download(object_id: UUID, request: Request):

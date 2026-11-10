@@ -99,9 +99,10 @@ class Transfers:
             raise unavailable("chunk_unavailable", "Stored chunk failed integrity or availability checks")
         return response.content
 
-    async def cleanup_worker(self, worker_id, token):
+    async def cleanup_worker(self, worker_id, token, object_id=None):
         for need in self.store.pending_cleanup():
-            if need["worker_id"] != worker_id:
+            if (need["worker_id"] != worker_id
+                    or (object_id is not None and need["object_id"] != str(object_id))):
                 continue
             op = self.store.cleanup_intent(UUID(need["object_id"]))
             body = TombstoneRequest(**{k: op[k] for k in TombstoneRequest.model_fields})
@@ -120,6 +121,25 @@ class Transfers:
                     or self.registry.reconciliation_token(worker_id) != token):
                 raise unavailable("stale_operation", "Worker changed during cleanup")
             self.store.acknowledge_cleanup(receipt)
+
+    async def delete(self, object_id):
+        # Hide and fence before waiting for transfers/maintenance. This also
+        # prevents a delayed PUT receipt from committing while DELETE is queued.
+        self.store.begin_deletion(object_id, WORKER_IDS, public=True)
+        self.wake.set()
+        async with self.lock:
+            for worker_id in WORKER_IDS:
+                token = self.registry.reconciliation_token(worker_id)
+                if token is None:
+                    continue
+                try:
+                    await self.cleanup_worker(worker_id, token, object_id)
+                except APIError:
+                    # A worker conflict or an invalid/stale receipt is not a
+                    # public client conflict. Retain cleanup and try every worker.
+                    self.registry.invalidate(worker_id)
+            if self.store.object_state(object_id) != "DELETED":
+                raise unavailable("deletion_pending", "Object is hidden; worker cleanup is pending")
 
     async def reconcile(self, worker_id):
         token = self.registry.reconciliation_token(worker_id)

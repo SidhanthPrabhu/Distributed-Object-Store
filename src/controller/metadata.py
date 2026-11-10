@@ -6,14 +6,14 @@ The transfer coordinator chooses eligible workers before creating PUT intents.
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import RLock
 from uuid import UUID, uuid4
 
 from common.errors import APIError
 from common.models import (
-    ChunkMetadata, ChunkReceipt, Checksum, ObjectMetadata, TombstoneReceipt,
+    ChunkMetadata, ChunkReceipt, Checksum, ObjectMetadata, ObjectSummary, TombstoneReceipt,
     WorkerHeartbeat, WorkerRegistration,
 )
 
@@ -178,23 +178,51 @@ class MetadataStore:
             obj = self._object(db, object_id)
             if not include_hidden and obj["state"] != "ACTIVE":
                 raise APIError(404, "object_not_found", "Object not found")
-            chunks = db.execute("SELECT * FROM chunks WHERE object_id = ? ORDER BY ordinal",
-                                (str(object_id),)).fetchall()
-            return ObjectMetadata(
-                object_id=obj["object_id"], generation=obj["generation"], name=obj["name"],
-                size_bytes=obj["size_bytes"], content_type=obj["content_type"],
-                created_at=obj["created_at"], modified_at=obj["modified_at"],
-                checksum=Checksum(value=obj["sha256"]), chunk_size_bytes=obj["chunk_size_bytes"],
-                chunk_count=len(chunks), metadata_revision=obj["metadata_revision"],
-                custom_metadata=json.loads(obj["custom_metadata"]),
-                chunks=[ChunkMetadata(
-                    chunk_id=c["chunk_id"], ordinal=c["ordinal"], size_bytes=c["size_bytes"],
-                    sha256=c["sha256"], locations=[r[0] for r in db.execute(
-                        "SELECT worker_id FROM replicas WHERE chunk_id = ? ORDER BY worker_id",
-                        (c["chunk_id"],),
-                    )],
-                ) for c in chunks],
-            )
+            return self._manifest(db, obj)
+
+    def _manifest(self, db, obj) -> ObjectMetadata:
+        object_id = obj["object_id"]
+        chunks = db.execute("SELECT * FROM chunks WHERE object_id = ? ORDER BY ordinal",
+                            (str(object_id),)).fetchall()
+        return ObjectMetadata(
+            object_id=obj["object_id"], generation=obj["generation"], name=obj["name"],
+            size_bytes=obj["size_bytes"], content_type=obj["content_type"],
+            created_at=obj["created_at"], modified_at=obj["modified_at"],
+            checksum=Checksum(value=obj["sha256"]), chunk_size_bytes=obj["chunk_size_bytes"],
+            chunk_count=len(chunks), metadata_revision=obj["metadata_revision"],
+            custom_metadata=json.loads(obj["custom_metadata"]),
+            chunks=[ChunkMetadata(
+                chunk_id=c["chunk_id"], ordinal=c["ordinal"], size_bytes=c["size_bytes"],
+                sha256=c["sha256"], locations=[r[0] for r in db.execute(
+                    "SELECT worker_id FROM replicas WHERE chunk_id = ? ORDER BY worker_id",
+                    (c["chunk_id"],),
+                )],
+            ) for c in chunks],
+        )
+
+    def patch_metadata(self, object_id: UUID, updates: dict) -> ObjectMetadata:
+        """Merge a custom-key map and return its own committed revision snapshot."""
+        with self.transaction() as db:
+            obj = self._object(db, object_id)
+            if obj["state"] != "ACTIVE":
+                raise APIError(404, "object_not_found", "Object not found")
+            if obj["metadata_revision"] == 2**63 - 1:
+                raise conflict("metadata_revision_exhausted", "Metadata revision limit reached")
+            custom = json.loads(obj["custom_metadata"])
+            custom.update(updates)
+            # Keep modification time advancing even if the wall clock moves back.
+            modified = max(datetime.now(timezone.utc),
+                           datetime.fromisoformat(obj["modified_at"]) + timedelta(microseconds=1))
+            db.execute("""UPDATE objects SET custom_metadata=?, modified_at=?,
+                metadata_revision=metadata_revision+1 WHERE object_id=?""",
+                (json.dumps(custom, allow_nan=False), modified.isoformat(), str(object_id)))
+            return self._manifest(db, self._object(db, object_id))
+
+    def list_objects(self) -> list[ObjectSummary]:
+        with self.transaction() as db:
+            return [ObjectSummary(**dict(row)) for row in db.execute("""SELECT
+                object_id, name, size_bytes, content_type FROM objects
+                WHERE state='ACTIVE' ORDER BY created_at, object_id""")]
 
     def object_state(self, object_id: UUID) -> str:
         with self.transaction() as db:
@@ -332,12 +360,15 @@ class MetadataStore:
                 raise conflict("incomplete_upload", "Every chunk needs two durable distinct placements")
             db.execute("UPDATE objects SET state = 'ACTIVE' WHERE object_id = ?", (str(object_id),))
 
-    def begin_deletion(self, object_id: UUID, worker_ids: tuple[str, ...]) -> dict:
+    def begin_deletion(self, object_id: UUID, worker_ids: tuple[str, ...], *,
+                       public: bool = False) -> dict:
         """Persist terminal intent and all-worker cleanup; no storage effects here."""
         if set(worker_ids) != {"worker1", "worker2", "worker3", "worker4"}:
             raise ValueError("Terminal cleanup must cover all four configured workers")
         with self.transaction() as db:
             obj = self._object(db, object_id)
+            if public and obj["state"] not in {"ACTIVE", "DELETING"}:
+                raise APIError(404, "object_not_found", "Object not found")
             existing = db.execute("""SELECT operations.* FROM tombstones JOIN operations
                 USING(operation_id) WHERE tombstones.object_id=?""", (str(object_id),)).fetchone()
             if existing:

@@ -1,0 +1,19 @@
+{
+  "metadata_patch_list_empty_errors": "passed",
+  "patch_chunk_writes": 0,
+  "size_bytes": 2000128,
+  "sha256": "fa758c84e15620affff7e202d7f5b3e9d51577350c1c8d316bb4348bc6e5adca",
+  "object_id": "98add0c8-118d-4ff1-abd5-e95fa65bbe42",
+  "offline_deletion_pending": "passed",
+  "pending_retry": "passed",
+  "restart_during_pending_cleanup": "passed",
+  "lost_cleanup_acknowledgement": "passed",
+  "patched_survivor_after_restart": "passed",
+  "all_four_durable_tombstones": "passed",
+  "delayed_put_status": 409,
+  "controller_epochs": [
+    11,
+    12
+  ],
+  "existing_objects_preserved": 1
+}

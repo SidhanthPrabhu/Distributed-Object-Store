@@ -1,5 +1,7 @@
 # A2/A3 controller handoff
 
+Historical slice evidence below is retained. The [tracker](COURSE-TRACKER.md) records accepted C0/C1 checks and confirmed reviews on 9 November; those supersede this slice’s older pending-foundation statements. See [A4](CONTROLLER-A4.md) for current public metadata, list and deletion behavior.
+
 9 November 2026. Controller-owned A2 reconciliation/recovery and A3 upload/download are **IN REVIEW**. Human review and real-service acceptance remain pending. Work extends the existing A1/A2 foundation on `main`; no commit, push, branch, PR, or remote issue was created. Worker code, packaging, locks, deployment, client tools, and CI remain absent and were not created here. C0 and C1 remain open.
 
 ## Behavior available
