@@ -59,6 +59,9 @@ class WorkerDouble:
                 receipt["boot_id"] = str(uuid4())
             return httpx.Response(200, json=receipt)
         cid = path.split("/")[-1]
+        if request.method == "DELETE":
+            self.chunks[worker].pop(cid, None)
+            return httpx.Response(204)
         if request.method == "PUT":
             fields = {"object_id": request.headers["X-Object-ID"],
                 "generation": request.headers["X-Object-Generation"],

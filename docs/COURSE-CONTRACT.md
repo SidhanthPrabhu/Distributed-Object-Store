@@ -65,6 +65,8 @@ The controller returns **200** with `controller_epoch`, current `state`, and `ac
 
 Local scanning uses catalog expected values originally accepted from controller intents and checked during reconciliation. It checks every local committed replica in fixed order, with configurable pauses and bounded concurrency. Track verification age per exact placement, not per logical chunk across workers. Pause/avoid catalog entries whose object has been tombstoned.
 
+The worker checks one placement at a time in chunk UUID order, wrapping at the end. The scan cursor and a new fault commit together. The worker retains one report per faulty placement until healthy bytes are verified or the placement is retired, and stops sending it after its ID is acknowledged. The default pause is one second, set by `OBJECT_STORE_SCAN_INTERVAL_SECONDS`. Pending publications and retired files are ineligible for the scan.
+
 ## Object tombstone extension
 
 For safe deletion add `POST /internal/objects/{object_id}/tombstone`, a small internal extension allowed by the assignment. JSON body: `generation`, `operation_id`, `controller_epoch`, `operation_sequence`. The worker durably fences future writes for that object/generation, coordinates ongoing local writes, removes canonical/staged/quarantined data, and returns **200** with identity fields and `cleanup_complete: true` only after cleanup. An absent object still gets a durable tombstone and successful acknowledgement. Retrying the same tombstone is idempotent.
@@ -91,6 +93,8 @@ Add one read-only extension, `GET /api/v1/admin/status`, returning `workers` (id
 You own repair decisions; Friend owns the storage effects. Reuse chunk GET/PUT for serial controller-relayed repair, buffering at most one chunk per transfer. Persist repair intent, validate source and destination, then conditionally commit the placement. Recheck object state and intent before commit; the worker must also enforce tombstones during publication. A write arriving after controller deletion cannot become a visible resurrected object.
 
 Controller metadata remains the authority across restart. Workers return inventory/receipts; they do not reconstruct arbitrary manifests. A returning third copy is verified before choosing two safe placements and retiring excess. If no valid readable source remains, expose unavailability and retry with bounded backoff instead of inventing recovery.
+
+Availability and recorded locations can differ during an outage. A repair may add a replacement while the unavailable copy remains recorded. Once the returning worker is reconciled, the controller freshly checks two retained copies and durably records a retirement intent before deleting the extra. An interrupted repair write is accepted only for a known journaled operation and after a checked read and a current durable receipt. The status endpoint shows known deficits and queued, running, or blocked work, including pending excess removal with no availability deficit.
 
 ## Contract-change checklist
 

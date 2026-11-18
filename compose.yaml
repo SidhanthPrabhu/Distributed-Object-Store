@@ -65,6 +65,13 @@ services:
     volumes:
       - worker4-data:/data
 
+  client:
+    profiles: [client]
+    build: .
+    image: course-distributed-object-store:local
+    entrypoint: ["python", "-m", "client", "--url", "http://controller:8000"]
+    command: ["--help"]
+
 volumes:
   controller-data:
   worker1-data:

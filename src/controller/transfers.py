@@ -22,6 +22,7 @@ from common.models import (
     ChunkMetadata, ChunkPutHeaders, ChunkReadHeaders, ChunkReceipt, Checksum,
     ObjectMetadata, TombstoneReceipt, TombstoneRequest, WorkerInventory,
 )
+from controller.repair import Repairs
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class Transfers:
         self.wake = asyncio.Event()
         self.temp_bytes = 0
         self.reconciliation_errors: dict[str, str] = {}
+        self.repairs = Repairs(self)
 
     async def request(self, method, worker_id, path, *, limit, **kwargs):
         """Limit decoded bytes AND whole-attempt time (HTTPX also limits idle time).
@@ -98,6 +100,30 @@ class Transfers:
                 or response.headers.get("X-Chunk-Length") != str(length)):
             raise unavailable("chunk_unavailable", "Stored chunk failed integrity or availability checks")
         return response.content
+
+    async def write_chunk(self, op, data, token, *, require_healthy=True):
+        worker_id, chunk_id = op["worker_id"], op["chunk_id"]
+        if token is None or token != self.registry.reconciliation_token(worker_id):
+            raise unavailable("stale_operation", "Worker changed before chunk write")
+        headers = ChunkPutHeaders(**{k: op[k] for k in ChunkPutHeaders.model_fields})
+        response = await self.request("PUT", worker_id, f"/internal/chunks/{chunk_id}", content=data,
+            headers={**headers.to_headers(), "Content-Type": "application/octet-stream"}, limit=64 * 1024)
+        if response.status_code != 200:
+            raise unavailable("write_failed", "Worker did not confirm durable storage")
+        try:
+            receipt = ChunkReceipt.model_validate_json(response.content)
+        except ValidationError:
+            raise unavailable("invalid_receipt", "Invalid worker storage receipt") from None
+        if str(receipt.operation_id) != op["operation_id"]:
+            raise unavailable("invalid_receipt", "Receipt belongs to another operation")
+        if (token != self.registry.reconciliation_token(worker_id)
+                or (require_healthy and worker_id not in self.registry.eligible_worker_ids())):
+            raise unavailable("stale_operation", "Worker changed during chunk write")
+        try:
+            self.store.record_receipt(receipt)
+        except APIError:
+            raise unavailable("invalid_receipt", "Storage receipt does not match current intent") from None
+        self.registry.consume_capacity(worker_id, len(data))
 
     async def cleanup_worker(self, worker_id, token, object_id=None):
         for need in self.store.pending_cleanup():
@@ -160,7 +186,7 @@ class Transfers:
         entries = {str(c.chunk_id): c for c in inventory.chunks}
         placements = {p["chunk_id"]: p for p in self.store.worker_placements(worker_id)}
         for entry in inventory.chunks:
-            authority = self.store.inventory_authority(entry.chunk_id, worker_id)
+            authority = self.store.inventory_authority(entry.chunk_id, worker_id, entry.operation_sequence)
             if authority is None:
                 raise unavailable("identity_conflict", "Inventory contains an unowned placement")
             # Cleanup must remove catalog entries as well as data before eligibility.
@@ -173,10 +199,12 @@ class Transfers:
                     or entry.operation_sequence != authority["operation_sequence"]):
                 self.store.placement_fault(entry.chunk_id, worker_id, "inventory_conflict")
                 raise unavailable("identity_conflict", "Inventory conflicts with authoritative intent")
-            if str(entry.chunk_id) not in placements:
-                # A5 must resolve ambiguous/excess ACTIVE placements. Do not adopt
-                # a catalog entry as a receipt or retire a potentially last good copy.
-                raise unavailable("uncommitted_placement", "Uncommitted placement needs recovery")
+            placement = placements.get(str(entry.chunk_id))
+            if placement is None or placement["operation_sequence"] != entry.operation_sequence:
+                if not authority["pending_repair"]:
+                    raise unavailable("uncommitted_placement", "Uncommitted placement needs recovery")
+                await self.repairs.recover_write(authority, worker_id, token)
+        placements = {p["chunk_id"]: p for p in self.store.worker_placements(worker_id)}
         verified = []
         for chunk_id, placement in placements.items():
             if placement["state"] != "ACTIVE":
@@ -216,14 +244,22 @@ class Transfers:
                     self.reconciliation_errors[worker_id] = getattr(exc, "code", "invalid_receipt")
 
     async def run(self):
+        loop = asyncio.get_running_loop()
+        interval = self.config.reconciliation_interval_seconds
+        next_repair = loop.time() + interval
         while True:
             self.wake.clear()
             try:
                 await self.maintenance_once()
+                if loop.time() >= next_repair:
+                    async with self.lock:
+                        await self.repairs.run_once()
+                    next_repair = loop.time() + interval
             except Exception:
                 logger.exception("Controller reconciliation pass failed; retaining pending work")
+                next_repair = loop.time() + interval
             try:
-                await asyncio.wait_for(self.wake.wait(), self.config.reconciliation_interval_seconds)
+                await asyncio.wait_for(self.wake.wait(), max(0.0, next_repair - loop.time()))
             except TimeoutError:
                 pass
 
@@ -270,27 +306,7 @@ class Transfers:
                     for worker_id in self.select_pair(chunk.size_bytes):
                         token = self.registry.reconciliation_token(worker_id)
                         op = self.store.create_put_intent(manifest.object_id, chunk.chunk_id, worker_id)
-                        headers = ChunkPutHeaders(**{k: op[k] for k in ChunkPutHeaders.model_fields})
-                        response = await self.request("PUT", worker_id,
-                            f"/internal/chunks/{chunk.chunk_id}", content=data,
-                            headers={**headers.to_headers(), "Content-Type": "application/octet-stream"},
-                            limit=64 * 1024)
-                        if response.status_code != 200:
-                            raise unavailable("write_failed", "Worker did not confirm durable storage")
-                        try:
-                            receipt = ChunkReceipt.model_validate_json(response.content)
-                        except ValidationError:
-                            raise unavailable("invalid_receipt", "Invalid worker storage receipt") from None
-                        if str(receipt.operation_id) != op["operation_id"]:
-                            raise unavailable("invalid_receipt", "Receipt belongs to another operation")
-                        if (worker_id not in self.registry.eligible_worker_ids()
-                                or self.registry.reconciliation_token(worker_id) != token):
-                            raise unavailable("stale_operation", "Worker changed during upload")
-                        try:
-                            self.store.record_receipt(receipt)
-                        except APIError:
-                            raise unavailable("invalid_receipt", "Storage receipt does not match intent") from None
-                        self.registry.consume_capacity(worker_id, len(data))
+                        await self.write_chunk(op, data, token)
                 completed = self.store.get_manifest(manifest.object_id, include_hidden=True)
                 eligible = set(self.registry.eligible_worker_ids())
                 faults = self.store.faulty_placements()

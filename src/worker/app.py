@@ -1,6 +1,7 @@
 """Uvicorn factory target: worker.app:create_app."""
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager, suppress
 from uuid import UUID
 
@@ -31,6 +32,20 @@ READ_HEADERS = {
 }
 INTEGER_FIELDS = {"controller_epoch", "operation_sequence", "length_bytes"}
 BINARY = "application/octet-stream"
+logger = logging.getLogger(__name__)
+
+
+async def scan_placements(store: ChunkStore, interval: float) -> None:
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await run_in_threadpool(store.scan_once)
+        except APIError:
+            if not store.scan_degraded:
+                logger.warning("Worker scan could not persist progress or a fault")
+            store.scan_degraded = True
+        else:
+            store.scan_degraded = False
 
 
 def parse_headers[Model: WireModel](
@@ -73,12 +88,16 @@ def create_app(config: WorkerConfig | None = None, *,
                 membership = Membership(store, client)
                 app.state.membership = membership
                 task = asyncio.create_task(membership.run())
+                scan = asyncio.create_task(scan_placements(store, settings.scan_interval_seconds))
                 try:
                     yield
                 finally:
+                    scan.cancel()
                     task.cancel()
                     with suppress(asyncio.CancelledError):
                         await task
+                    with suppress(asyncio.CancelledError):
+                        await scan
                     app.state.membership = None
         finally:
             store.close()

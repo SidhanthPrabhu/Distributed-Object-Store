@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 
 from common.errors import APIError
 from common.models import (
-    ChunkPutHeaders, ChunkReadHeaders, ChunkReceipt, InventoryChunk,
+    ChunkPutHeaders, ChunkReadHeaders, ChunkReceipt, IntegrityReport, InventoryChunk,
     MutationHeaders, TombstoneReceipt, TombstoneRequest, WorkerIdentity, WorkerInventory,
 )
 from worker.config import WorkerConfig
@@ -48,6 +48,16 @@ CREATE TABLE IF NOT EXISTS placements (
     last_verified_at TEXT
 );
 CREATE INDEX IF NOT EXISTS placements_by_generation ON placements(object_id, generation);
+CREATE TABLE IF NOT EXISTS scan_cursor (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1), chunk_id TEXT NOT NULL
+);
+INSERT OR IGNORE INTO scan_cursor VALUES (1, '');
+CREATE TABLE IF NOT EXISTS scan_faults (
+    chunk_id TEXT PRIMARY KEY REFERENCES placements(chunk_id),
+    report_id TEXT NOT NULL UNIQUE, report TEXT NOT NULL,
+    acknowledged INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS scan_faults_pending ON scan_faults(acknowledged, chunk_id);
 CREATE TABLE IF NOT EXISTS object_tombstones (
     object_id TEXT NOT NULL,
     generation TEXT NOT NULL,
@@ -79,6 +89,7 @@ def sync_directory(path: Path) -> None:
 class ChunkStore:
     def __init__(self, config: WorkerConfig):
         self._lock = Lock()
+        self.scan_degraded = False
         self._max_length = config.chunk_size_bytes
         self._chunks = config.data_dir / "chunks"
         self._chunks.mkdir(parents=True, exist_ok=True)
@@ -215,6 +226,53 @@ class ChunkStore:
                           last_verified_at = coalesce(?, last_verified_at) WHERE chunk_id = ?""",
                 (state, verified_at, chunk_id),
             )
+            if state in {"valid", "retired"}:
+                self._db.execute("DELETE FROM scan_faults WHERE chunk_id = ?", (chunk_id,))
+
+    def scan_once(self) -> None:
+        """Verify one catalog placement and commit the cursor with any fault."""
+        with self._access():
+            cursor = self._db.execute("SELECT chunk_id FROM scan_cursor").fetchone()[0]
+            query = """SELECT * FROM placements WHERE chunk_id > ?
+                AND state IN ('valid', 'missing', 'corrupt') ORDER BY chunk_id LIMIT 1"""
+            row = self._db.execute(query, (cursor,)).fetchone()
+            if row is None:
+                row = self._db.execute(query, ("",)).fetchone()
+            if row is None:
+                return
+            key = row["chunk_id"]
+            now = datetime.now(timezone.utc)
+            try:
+                state, _ = self._check_file(self._path(key), row["length_bytes"], row["expected_sha256"])
+            except OSError:
+                state = "read_error"
+            with self._db:
+                if state == "valid":
+                    self._db.execute("UPDATE placements SET state='valid', last_verified_at=? WHERE chunk_id=?",
+                                     (now.isoformat(), key))
+                    self._db.execute("DELETE FROM scan_faults WHERE chunk_id=?", (key,))
+                else:
+                    if state != "read_error":
+                        self._db.execute("UPDATE placements SET state=? WHERE chunk_id=?", (state, key))
+                    if not self._db.execute("SELECT 1 FROM scan_faults WHERE chunk_id=?", (key,)).fetchone():
+                        report = IntegrityReport(report_id=uuid4(), chunk_id=key, object_id=row["object_id"],
+                                                 generation=row["generation"], observed_at=now, outcome=state)
+                        self._db.execute("INSERT INTO scan_faults VALUES (?,?,?,0)",
+                                         (key, str(report.report_id), report.model_dump_json()))
+                self._db.execute("UPDATE scan_cursor SET chunk_id=? WHERE singleton=1", (key,))
+
+    def integrity_batch(self) -> tuple[list[IntegrityReport], bool]:
+        with self._access():
+            rows = self._db.execute("""SELECT report FROM scan_faults WHERE acknowledged=0
+                ORDER BY chunk_id LIMIT 101""").fetchall()
+            return [IntegrityReport.model_validate_json(row[0]) for row in rows[:100]], (
+                len(rows) > 100 or self.scan_degraded)
+
+    def acknowledge_reports(self, ids: list[UUID]) -> None:
+        if ids:
+            with self._access(), self._db:
+                self._db.executemany("UPDATE scan_faults SET acknowledged=1 WHERE report_id=?",
+                                     [(str(report_id),) for report_id in ids])
 
     @staticmethod
     def _check_file(path: Path, length: int, digest: str) -> tuple[str, bytes]:
@@ -396,6 +454,8 @@ class ChunkStore:
                         operation,
                     )
                     if fence is None:
+                        self._db.execute("""DELETE FROM scan_faults WHERE chunk_id IN
+                            (SELECT chunk_id FROM placements WHERE object_id=? AND generation=?)""", key)
                         self._db.execute(
                             """UPDATE placements SET state = 'retired'
                                WHERE object_id = ? AND generation = ?""",

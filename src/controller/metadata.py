@@ -77,6 +77,20 @@ CREATE TABLE IF NOT EXISTS integrity_reports (
 );
 CREATE INDEX IF NOT EXISTS pending_operations ON operations(state);
 CREATE INDEX IF NOT EXISTS object_chunks ON chunks(object_id, ordinal);
+CREATE TABLE IF NOT EXISTS repair_writes (
+    chunk_id TEXT NOT NULL REFERENCES chunks(chunk_id),
+    worker_id TEXT NOT NULL REFERENCES workers(worker_id),
+    operation_id TEXT NOT NULL REFERENCES operations(operation_id),
+    PRIMARY KEY (chunk_id, worker_id)
+);
+CREATE TABLE IF NOT EXISTS replica_retirements (
+    chunk_id TEXT NOT NULL REFERENCES chunks(chunk_id),
+    worker_id TEXT NOT NULL REFERENCES workers(worker_id),
+    placement_id TEXT NOT NULL REFERENCES operations(operation_id),
+    operation_id TEXT NOT NULL UNIQUE, operation_sequence INTEGER NOT NULL UNIQUE,
+    controller_epoch INTEGER NOT NULL, storage_id TEXT NOT NULL, boot_id TEXT NOT NULL,
+    PRIMARY KEY (chunk_id, worker_id)
+);
 CREATE TABLE IF NOT EXISTS placement_faults (
     chunk_id TEXT NOT NULL REFERENCES chunks(chunk_id),
     worker_id TEXT NOT NULL REFERENCES workers(worker_id), reason TEXT NOT NULL,
@@ -273,10 +287,14 @@ class MetadataStore:
                     str(report.report_id), heartbeat.worker_id, str(heartbeat.storage_id),
                     str(report.chunk_id), payload,
                 ))
+                if not previous:
+                    db.execute("""UPDATE integrity_reports SET pending=0
+                        WHERE worker_id=? AND chunk_id=? AND report_id<>?""",
+                        (heartbeat.worker_id, str(report.chunk_id), str(report.report_id)))
                 known = db.execute("""SELECT 1 FROM chunks JOIN objects USING(object_id)
-                    WHERE chunk_id=? AND object_id=? AND generation=?""",
+                    WHERE chunk_id=? AND object_id=? AND generation=? AND objects.state IN ('UPLOADING','ACTIVE')""",
                     (str(report.chunk_id), str(report.object_id), str(report.generation))).fetchone()
-                if known:
+                if known and not previous:
                     db.execute("INSERT OR REPLACE INTO placement_faults VALUES (?,?,?)",
                                (str(report.chunk_id), heartbeat.worker_id, report.outcome))
                 acknowledged.append(report.report_id)
@@ -286,10 +304,12 @@ class MetadataStore:
         # Only return acknowledgements after COMMIT has succeeded.
         return acknowledged
 
-    def _new_operation(self, db, obj, kind, **extra) -> dict:
+    def _next_sequence(self, db) -> int:
         db.execute("UPDATE counters SET sequence = sequence + 1 WHERE singleton = 1")
-        sequence = db.execute("SELECT sequence FROM counters").fetchone()[0]
-        op = dict(operation_id=str(uuid4()), operation_sequence=sequence,
+        return db.execute("SELECT sequence FROM counters").fetchone()[0]
+
+    def _new_operation(self, db, obj, kind, **extra) -> dict:
+        op = dict(operation_id=str(uuid4()), operation_sequence=self._next_sequence(db),
                   controller_epoch=self.epoch, object_id=obj["object_id"],
                   generation=obj["generation"], kind=kind, **extra)
         columns = ",".join(op)
@@ -297,7 +317,8 @@ class MetadataStore:
         db.execute(f"INSERT INTO operations ({columns}) VALUES ({placeholders})", tuple(op.values()))
         return {**op, "state": "PENDING"}
 
-    def create_put_intent(self, object_id: UUID, chunk_id: UUID, worker_id: str) -> dict:
+    def create_put_intent(self, object_id: UUID, chunk_id: UUID, worker_id: str, *,
+                          repair: bool = False, renew: bool = False) -> dict:
         with self.transaction() as db:
             obj = self._object(db, object_id)
             if obj["state"] not in {"UPLOADING", "ACTIVE"}:
@@ -307,11 +328,27 @@ class MetadataStore:
             worker = db.execute("SELECT * FROM workers WHERE worker_id = ?", (worker_id,)).fetchone()
             if chunk is None or worker is None:
                 raise conflict("identity_conflict", "Unknown chunk or worker")
-            return self._new_operation(
+            old = None
+            if repair:
+                if obj["state"] != "ACTIVE":
+                    raise conflict("stale_operation", "Repair requires an active object")
+                old = db.execute("""SELECT operations.* FROM repair_writes
+                    JOIN operations USING(operation_id) WHERE repair_writes.chunk_id=?
+                    AND repair_writes.worker_id=?""", (str(chunk_id), worker_id)).fetchone()
+                if (old and not renew and old["controller_epoch"] == self.epoch
+                        and old["storage_id"] == worker["storage_id"] and old["boot_id"] == worker["boot_id"]):
+                    return dict(old)
+            op = self._new_operation(
                 db, obj, "PUT", chunk_id=str(chunk_id), worker_id=worker_id,
                 storage_id=worker["storage_id"], boot_id=worker["boot_id"],
                 length_bytes=chunk["size_bytes"], sha256=chunk["sha256"],
             )
+            if repair:
+                if old:
+                    db.execute("UPDATE operations SET state='DONE' WHERE operation_id=?", (old["operation_id"],))
+                db.execute("INSERT OR REPLACE INTO repair_writes VALUES (?,?,?)",
+                           (str(chunk_id), worker_id, op["operation_id"]))
+            return op
 
     def record_receipt(self, receipt: ChunkReceipt) -> None:
         with self.transaction() as db:
@@ -332,6 +369,8 @@ class MetadataStore:
                                  (str(receipt.chunk_id), receipt.worker_id)).fetchone()
             if current and current[0] > receipt.operation_sequence:
                 raise conflict("stale_operation", "A newer placement already exists")
+            if op["state"] == "DONE" and (not current or current[0] != receipt.operation_sequence):
+                raise conflict("stale_operation", "The PUT intent has been superseded")
             db.execute("INSERT OR REPLACE INTO replicas VALUES (?,?,?,?)", (
                 str(receipt.chunk_id), receipt.worker_id, str(receipt.operation_id),
                 receipt.model_dump_json(),
@@ -339,6 +378,11 @@ class MetadataStore:
             db.execute("UPDATE operations SET state = 'DONE' WHERE operation_id = ?",
                        (str(receipt.operation_id),))
             db.execute("DELETE FROM placement_faults WHERE chunk_id=? AND worker_id=?",
+                       (str(receipt.chunk_id), receipt.worker_id))
+            db.execute("DELETE FROM repair_writes WHERE operation_id=?", (str(receipt.operation_id),))
+            db.execute("DELETE FROM replica_retirements WHERE chunk_id=? AND worker_id=?",
+                       (str(receipt.chunk_id), receipt.worker_id))
+            db.execute("UPDATE integrity_reports SET pending=0 WHERE chunk_id=? AND worker_id=?",
                        (str(receipt.chunk_id), receipt.worker_id))
 
     def publish_upload(self, object_id: UUID) -> None:
@@ -380,6 +424,11 @@ class MetadataStore:
             db.executemany("INSERT INTO cleanup(object_id, worker_id) VALUES (?,?)",
                            [(str(object_id), worker_id) for worker_id in worker_ids])
             db.execute("UPDATE objects SET state='DELETING' WHERE object_id=?", (str(object_id),))
+            for table in ("repair_writes", "replica_retirements", "placement_faults"):
+                db.execute(f"""DELETE FROM {table} WHERE chunk_id IN
+                    (SELECT chunk_id FROM chunks WHERE object_id=?)""", (str(object_id),))
+            db.execute("""UPDATE integrity_reports SET pending=0 WHERE chunk_id IN
+                (SELECT chunk_id FROM chunks WHERE object_id=?)""", (str(object_id),))
             return op
 
     def pending_operations(self) -> list[dict]:
@@ -457,15 +506,73 @@ class MetadataStore:
                 JOIN operations ON operations.operation_id=replicas.operation_id
                 WHERE replicas.worker_id=?""", (worker_id,))]
 
-    def inventory_authority(self, chunk_id: UUID, worker_id: str) -> dict | None:
+    def inventory_authority(self, chunk_id: UUID, worker_id: str,
+                            sequence: int | None = None) -> dict | None:
         with self._lock:
             row = self._db.execute("""SELECT chunks.*, objects.generation, objects.state,
-                operations.operation_sequence FROM chunks JOIN objects USING(object_id)
+                operations.operation_sequence, operations.operation_id,
+                EXISTS (SELECT 1 FROM repair_writes WHERE repair_writes.chunk_id=chunks.chunk_id
+                    AND repair_writes.worker_id=operations.worker_id)
+                    AS pending_repair
+                FROM chunks JOIN objects USING(object_id)
                 JOIN operations USING(chunk_id) WHERE chunks.chunk_id=?
                 AND operations.worker_id=? AND operations.kind='PUT'
+                AND (? IS NULL OR operations.operation_sequence=?)
                 ORDER BY operations.operation_sequence DESC LIMIT 1""",
-                (str(chunk_id), worker_id)).fetchone()
+                (str(chunk_id), worker_id, sequence, sequence)).fetchone()
             return dict(row) if row else None
+
+    def active_chunk_placements(self) -> list[dict]:
+        with self._lock:
+            return [dict(row) for row in self._db.execute("""SELECT
+                chunks.*, objects.generation, replicas.worker_id, operations.operation_sequence,
+                placement_faults.reason, replica_retirements.operation_id AS retirement_id
+                FROM chunks JOIN objects USING(object_id)
+                LEFT JOIN replicas USING(chunk_id)
+                LEFT JOIN operations ON replicas.operation_id=operations.operation_id
+                LEFT JOIN placement_faults ON placement_faults.chunk_id=chunks.chunk_id
+                    AND placement_faults.worker_id=replicas.worker_id
+                LEFT JOIN replica_retirements ON replica_retirements.chunk_id=chunks.chunk_id
+                    AND replica_retirements.worker_id=replicas.worker_id
+                WHERE objects.state='ACTIVE' ORDER BY chunks.chunk_id, replicas.worker_id""")]
+
+    def begin_retirement(self, chunk: dict, worker_id: str) -> dict:
+        with self.transaction() as db:
+            obj = self._object(db, UUID(chunk["object_id"]))
+            placement = db.execute("""SELECT operation_id FROM replicas
+                 WHERE chunk_id=? AND worker_id=?""", (chunk["chunk_id"], worker_id)).fetchone()
+            worker = db.execute("SELECT * FROM workers WHERE worker_id=?", (worker_id,)).fetchone()
+            if obj["state"] != "ACTIVE" or placement is None or worker is None:
+                raise conflict("stale_operation", "Placement is no longer eligible for retirement")
+            old = db.execute("""SELECT * FROM replica_retirements WHERE chunk_id=? AND worker_id=?""",
+                             (chunk["chunk_id"], worker_id)).fetchone()
+            if (old and old["placement_id"] == placement[0] and old["controller_epoch"] == self.epoch
+                    and old["storage_id"] == worker["storage_id"] and old["boot_id"] == worker["boot_id"]):
+                op = dict(old)
+            else:
+                op = dict(chunk_id=chunk["chunk_id"], worker_id=worker_id, placement_id=placement[0],
+                          operation_id=str(uuid4()), operation_sequence=self._next_sequence(db),
+                          controller_epoch=self.epoch, storage_id=worker["storage_id"], boot_id=worker["boot_id"])
+                db.execute("INSERT OR REPLACE INTO replica_retirements VALUES (?,?,?,?,?,?,?,?)",
+                           tuple(op.values()))
+            return {**op, "object_id": obj["object_id"], "generation": obj["generation"]}
+
+    def finish_retirement(self, op: dict) -> None:
+        key = (op["chunk_id"], op["worker_id"])
+        with self.transaction() as db:
+            intent = db.execute("SELECT * FROM replica_retirements WHERE chunk_id=? AND worker_id=?",
+                                key).fetchone()
+            obj = self._object(db, UUID(op["object_id"]))
+            if intent is None or intent["operation_id"] != op["operation_id"] or obj["state"] != "ACTIVE":
+                raise conflict("stale_operation", "Retirement was superseded")
+            db.execute("DELETE FROM replicas WHERE chunk_id=? AND worker_id=? AND operation_id=?",
+                       (*key, op["placement_id"]))
+            db.execute("""UPDATE operations SET state='DONE' WHERE operation_id IN
+                (SELECT operation_id FROM repair_writes WHERE chunk_id=? AND worker_id=?)""", key)
+            db.execute("DELETE FROM repair_writes WHERE chunk_id=? AND worker_id=?", key)
+            db.execute("DELETE FROM replica_retirements WHERE chunk_id=? AND worker_id=?", key)
+            db.execute("DELETE FROM placement_faults WHERE chunk_id=? AND worker_id=?", key)
+            db.execute("UPDATE integrity_reports SET pending=0 WHERE chunk_id=? AND worker_id=?", key)
 
     def placement_fault(self, chunk_id: UUID, worker_id: str, reason: str) -> None:
         with self.transaction() as db:
@@ -481,6 +588,8 @@ class MetadataStore:
         """Clear only after fresh authoritative reads and a current registry token."""
         with self.transaction() as db:
             db.executemany("DELETE FROM placement_faults WHERE worker_id=? AND chunk_id=?",
+                           [(worker_id, chunk_id) for chunk_id in chunk_ids])
+            db.executemany("UPDATE integrity_reports SET pending=0 WHERE worker_id=? AND chunk_id=?",
                            [(worker_id, chunk_id) for chunk_id in chunk_ids])
 
     def next_placement_cursor(self) -> int:

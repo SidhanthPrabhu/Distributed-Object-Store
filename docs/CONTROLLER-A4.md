@@ -1,6 +1,6 @@
 # A4 controller handoff
 
-10 November 2026. A4 is **IN REVIEW**, awaiting Friend's review and C2 joint acceptance with B5's initial client/inspection. C0/C1 remain DONE with their already-confirmed reviews; older foundation notes describe historical slices. Work is uncommitted on `main`. Only controller source, controller tests and controller documentation changed; no worker, client, deployment, lock or packaging source was edited.
+10 November 2026. A4 shipped in `94315b8` and was accepted with C2 on 18 November. The results below describe the A4 implementation and its independent verification. See the [tracker](COURSE-TRACKER.md#joint-milestone-gates) for closeout.
 
 ## Public behavior and interfaces
 
@@ -118,8 +118,14 @@ all reported checks passed; controller healthy at completion
 
 The owner's real-service object was `a7380912-566e-458c-a839-47fc667abe3c`, with 2,000,128 bytes and SHA-256 `fa758c84e15620affff7e202d7f5b3e9d51577350c1c8d316bb4348bc6e5adca`. The result reported zero PATCH chunk writes; passing metadata/list/empty/error, offline deletion, pending retry, interrupted cleanup, lost acknowledgement, survivor/restart and all-four durable tombstone checks; delayed PUT status 409; controller epochs 12 → 13; and one existing object preserved. These are owner-provided results, separate from the agent-run evidence above. They confirm independent technical checks, without implying Friend's implementation review or joint C2 acceptance.
 
+## Post-restart verification with automatic repair
+
+During C3/C4 verification on 18 November, the A4 restart probe failed when it compared a patched object's entire metadata response with the response saved before restart. The retained controller journal showed writes to workers 2 and 3 in epoch 3 and a replacement write to worker 1 in epoch 4 for the same chunk. Worker 2 then acknowledged retirement. The metadata GET returned 200. The updated probe waits for repair of the survivor to finish and compares every field except its current replica locations. It checks those locations against all four worker volumes, verifies both file lengths and SHA-256 digests, and downloads the original bytes.
+
+Two ordinary restarts and a controlled late rejoin passed on a fresh five-service stack. In the late-rejoin run, worker 2 stayed offline until the controller repaired the chunk onto another worker. A refused connection during worker startup now reaches the existing bounded readiness poll. After rejoin the only difference in the two public responses was the change from workers 2 and 3 to workers 1 and 3. Both files matched the original checksum, and the downloaded bytes matched the upload. See the [verification results](testing/course-services.json).
+
 ## Remaining acceptance and teammate dependencies
 
-A4 is ready for Friend's review of API semantics, public error mapping, terminal ordering and reuse of B3 fencing. No new runtime dependency, worker change or packaging request is needed. B5 should use the direct custom map, full shared `ObjectMetadata`, `ObjectList` and pending-delete semantics documented here. C2 still requires B5 initial client/inspection and joint end-to-end acceptance; this handoff does not claim either person's new review or mark C2 DONE.
+C2 review confirmed that the initial B5 CLI uses the direct custom map, shared `ObjectMetadata` and `ObjectList`, and pending-delete semantics documented here. Its [integrated checks](CLIENT-CLI.md#integrated-c2-verification) passed against the A4 implementation.
 
 Invalid/stale receipts, deterministic PATCH/delete interleavings, interrupted execution and delayed controller receipt publication are fault-injected double tests. Real HTTP services verify ordinary metadata/bytes, concurrent updates, worker outage, durable cleanup, controlled acknowledgement loss, restart/rejoin and terminal PUT rejection. No actual host crash/power loss or disk failure was performed. The full serial repair scheduler, safe excess-copy retirement and repair/delete race acceptance remain A5/A6; B4 scanning and later portfolio work are unchanged.

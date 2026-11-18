@@ -35,9 +35,10 @@ class Membership:
 
     async def _heartbeat(self) -> HeartbeatResponse | None:
         free_bytes = await run_in_threadpool(self.store.free_bytes)
+        reports, more = await run_in_threadpool(self.store.integrity_batch)
         message = WorkerHeartbeat(
             **self.store.identity.model_dump(),
-            free_bytes=free_bytes, integrity_reports=[], integrity_reports_more=False,
+            free_bytes=free_bytes, integrity_reports=reports, integrity_reports_more=more,
         )
         async with asyncio.timeout(REQUEST_TIMEOUT):
             response = await self.client.post(
@@ -49,6 +50,9 @@ class Membership:
                 return None
         heartbeat = HeartbeatResponse.model_validate_json(response.raise_for_status().content)
         await run_in_threadpool(self.store.observe_controller_epoch, heartbeat.controller_epoch)
+        sent = {report.report_id for report in reports}
+        await run_in_threadpool(self.store.acknowledge_reports,
+                                [report_id for report_id in heartbeat.acknowledged_report_ids if report_id in sent])
         return heartbeat
 
     async def run(self) -> None:

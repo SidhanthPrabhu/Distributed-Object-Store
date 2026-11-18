@@ -134,6 +134,10 @@ def create_app(config: ControllerConfig | None = None, *,
     def list_objects(request: Request):
         return ObjectList(objects=request.app.state.store.list_objects())
 
+    @app.get("/api/v1/admin/status")
+    async def storage_status(request: Request):
+        return request.app.state.transfers.repairs.status()
+
     @app.get("/api/v1/objects/{object_id}/metadata", response_model=ObjectMetadata)
     def metadata(object_id: UUID, request: Request):
         return request.app.state.store.get_manifest(object_id)

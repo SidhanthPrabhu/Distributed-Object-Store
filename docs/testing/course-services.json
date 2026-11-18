@@ -1,0 +1,50 @@
+{
+  "date": "2026-11-18",
+  "base_commit": "5d9bc15",
+  "source": "Clean source copy with the C3 and C4 working changes",
+  "local_pytest": {
+    "command": "env -u OBJECT_STORE_C2_TEST_URL -u OBJECT_STORE_URL .venv/bin/python -m pytest -q -o faulthandler_timeout=20",
+    "passed": 194,
+    "failed": 0,
+    "skipped": 1,
+    "skip_reason": "Opt-in live C2 test passed separately against Compose",
+    "warnings": 1,
+    "warning": "Existing Starlette TestClient HTTPX deprecation",
+    "elapsed_seconds": 5.70
+  },
+  "compose_start": "passed",
+  "container_client_health_and_status": "passed",
+  "walkthrough": {
+    "demos_passed": 6,
+    "size_bytes": 2500000,
+    "sha256": "ac9a856bdaaa260f50c7e9828f6f220557fb19d77f9071346d9e159e1edc5167",
+    "preexisting_objects_preserved": 0,
+    "controller_restart": "passed after pending repairs and retirements finished",
+    "both_copies_offline_status": 503,
+    "both_new_worker_boots_reconciled": true,
+    "download_and_replica_hashes_after_rejoin": "passed"
+  },
+  "c2_live_passed": 1,
+  "a4_probe": {
+    "patch_chunk_writes": 0,
+    "offline_deletion_pending": "passed",
+    "restart_during_pending_cleanup": "passed",
+    "lost_cleanup_acknowledgement": "passed",
+    "all_four_durable_tombstones": "passed",
+    "delayed_put_status": 409,
+    "controller_epochs": [3, 4],
+    "normal_restart_epochs": [[3, 4], [4, 5]],
+    "delayed_worker_restart": {
+      "controller_epochs": [5, 6],
+      "delayed_worker": "worker2",
+      "survivor_object_id": "81a4c2b9-7ead-4c82-a272-0c61039a0677",
+      "survivor_revision": 2,
+      "locations_before": ["worker2", "worker3"],
+      "locations_after": ["worker1", "worker3"],
+      "other_metadata_fields_equal": true,
+      "verified_physical_copies": 2,
+      "download_matched_original": true,
+      "survivor_sha256": "8c0d5ebe976a4b63d0b483d7f2c798e8536b2e62264d623d3e29b8e7f24c78bc"
+    }
+  }
+}

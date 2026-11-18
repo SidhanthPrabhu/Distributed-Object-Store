@@ -7,6 +7,7 @@ Not collected by pytest. Requires Python's standard library and Docker Compose.
 
 import base64
 import json
+import os
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -15,7 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
-BASE = 'http://127.0.0.1:8000'
+BASE = os.environ.get('OBJECT_STORE_A4_TEST_URL', 'http://127.0.0.1:8000')
 WORKERS = [f'worker{i}' for i in range(1, 5)]
 
 
@@ -66,13 +67,20 @@ try:
     response=urllib.request.urlopen(r, timeout=5)
 except urllib.error.HTTPError as e:
     response=e
+except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+    # Pass connection failures back to the host's bounded readiness poll.
+    print(json.dumps({'transport_error': str(e)}))
+    sys.exit(0)
 body=response.read()
 print(json.dumps({'status':response.status, 'data':json.loads(body) if body else None}))
 '''
 
 
 def worker_http(worker, path, **kwargs):
-    return inside('controller', WORKER_HTTP, {'worker': worker, 'path': path, **kwargs})
+    result = inside('controller', WORKER_HTTP, {'worker': worker, 'path': path, **kwargs})
+    if 'transport_error' in result:
+        raise URLError(result['transport_error'])
+    return result
 
 
 def ready():
@@ -82,6 +90,7 @@ def ready():
 
 WORKER_SNAPSHOT = '''
 import json, sqlite3, sys
+from hashlib import sha256
 from pathlib import Path
 p=json.load(sys.stdin)
 db=sqlite3.connect('file:/data/catalog.sqlite3?mode=ro', uri=True)
@@ -90,9 +99,14 @@ ids=p['chunks']
 ops=[dict(r) for r in db.execute('SELECT * FROM operations ORDER BY operation_sequence')
      if r['chunk_id'] in ids]
 t=[dict(r) for r in db.execute('SELECT * FROM object_tombstones WHERE object_id=?', (p['object_id'],))]
-placements=[dict(r) for r in db.execute('SELECT * FROM placements WHERE object_id=?', (p['object_id'],))]
-files=sorted(str(f.relative_to('/data')) for f in Path('/data/chunks').rglob('*')
-             if f.is_file() and any(cid in f.name for cid in ids))
+# Verification timestamps can advance during a scan without changing chunk data or intent.
+placements=[{k:r[k] for k in r.keys() if k != 'last_verified_at'}
+            for r in db.execute('SELECT * FROM placements WHERE object_id=?', (p['object_id'],))]
+files={}
+for f in Path('/data/chunks').rglob('*'):
+    if f.is_file() and any(cid in f.name for cid in ids):
+        data=f.read_bytes()
+        files[str(f.relative_to('/data'))]={'size_bytes':len(data),'sha256':sha256(data).hexdigest()}
 print(json.dumps({'operations':ops,'tombstones':t,'placements':placements,'files':files}))
 '''
 
@@ -119,6 +133,44 @@ def assert_hidden(oid):
         status, result = call(method, '/api/v1/objects/' + oid + suffix, body)
         assert status == 404 and result['error']['code'] == 'object_not_found'
     assert oid not in [o['object_id'] for o in call('GET', '/api/v1/objects')[1]['objects']]
+
+
+def assert_survivor_recovered(before, url, payload):
+    chunk_ids = {c['chunk_id'] for c in before['chunks']}
+
+    def repair_finished():
+        status, report = call('GET', '/api/v1/admin/status')
+        assert status == 200, (status, report)
+        healthy = {w['worker_id'] for w in report['workers'] if w['state'] == 'HEALTHY'}
+        pending = {job['chunk_id'] for key in ('replication_deficits', 'repairs') for job in report[key]}
+        return healthy == set(WORKERS) and chunk_ids.isdisjoint(pending)
+
+    wait_for(repair_finished, 'all four workers healthy and survivor repairs finished')
+    status, after = call('GET', url + '/metadata')
+    assert status == 200, (status, after)
+
+    # A repair can move replicas. Every other field, including chunk order, must survive.
+    def durable_metadata(obj):
+        return {**obj, 'chunks': [{k: v for k, v in c.items() if k != 'locations'}
+                                  for c in obj['chunks']]}
+
+    expected, actual = durable_metadata(before), durable_metadata(after)
+    assert actual.keys() == expected.keys(), (expected.keys(), actual.keys())
+    for field in expected:
+        assert actual[field] == expected[field], (field, expected[field], actual[field])
+    expected_files = {w: {} for w in WORKERS}
+    for chunk in after['chunks']:
+        holders = chunk['locations']
+        assert len(holders) == 2 and len(set(holders)) == 2, (chunk['chunk_id'], holders)
+        for w in holders:
+            expected_files[w][f"chunks/{chunk['chunk_id']}.bin"] = {
+                'size_bytes': chunk['size_bytes'], 'sha256': chunk['sha256']}
+    for worker, records in snapshot(after).items():
+        assert records['files'] == expected_files[worker], (worker, expected_files[worker], records['files'])
+        valid_files = {f"chunks/{row['chunk_id']}.bin" for row in records['placements'] if row['state'] == 'valid'}
+        assert valid_files == expected_files[worker].keys(), (worker, valid_files, expected_files[worker])
+    status, downloaded = call('GET', url)
+    assert status == 200 and downloaded == payload, (status, downloaded)
 
 
 def main():
@@ -181,10 +233,12 @@ def main():
         assert_hidden(obj['object_id'])
         status, pending = call('DELETE', url)
         assert status == 503 and pending['error']['code'] == 'deletion_pending'
-        survivor = upload(b'A4 survivor bytes')
+        survivor_bytes = b'A4 survivor bytes'
+        survivor = upload(survivor_bytes)
         created.append(survivor['object_id'])
         survivor_url = '/api/v1/objects/' + survivor['object_id']
-        survivor = call('PATCH', survivor_url + '/metadata', {'survives': {'restart': True}})[1]
+        status, survivor = call('PATCH', survivor_url + '/metadata', {'survives': {'restart': True}})
+        assert status == 200 and survivor['custom_metadata']['survives'] == {'restart': True}, (status, survivor)
         before_restart = call('GET', '/health/ready')[1]['controller_epoch']
         # Simulate a worker effect whose acknowledgement cannot reach the controller.
         # Read the existing pending intent; never write a runtime database directly.
@@ -197,7 +251,8 @@ r=db.execute('SELECT operations.* FROM tombstones JOIN operations USING(operatio
 print(json.dumps(dict(r)))
 """, obj['object_id'])
         compose('stop', 'controller')
-        subprocess.check_output(['docker', 'start', 'worker4'], text=True)
+        worker4 = compose('ps', '-a', '-q', 'worker4').strip()
+        subprocess.check_output(['docker', 'start', worker4], text=True)
         inside('worker4', r"""
 import json, socket, sys, time
 p=json.load(sys.stdin)
@@ -230,9 +285,8 @@ print(json.dumps({'sent':True}))
         after_restart = call('GET', '/health/ready')[1]['controller_epoch']
         assert after_restart > before_restart
         assert_hidden(obj['object_id'])
-        wait_for(ready, 'worker4 rejoins and cleanup completes')
-        assert call('GET', survivor_url + '/metadata') == (200, survivor)
-        assert call('GET', survivor_url) == (200, b'A4 survivor bytes')
+        wait_for(ready, 'worker4 rejoins and all services report ready')
+        assert_survivor_recovered(survivor, survivor_url, survivor_bytes)
         assert call('DELETE', survivor_url) == (204, b'')
         assert call('DELETE', url)[0] == 404  # maintenance finished the pending deletion
         completed = snapshot(obj)

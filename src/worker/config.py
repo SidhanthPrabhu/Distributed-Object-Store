@@ -2,9 +2,9 @@
 
 import os
 from pathlib import Path
-from typing import Self
+from typing import Annotated, Self
 
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import AnyHttpUrl, Field, field_validator
 
 from common.config import StorageConfig
 from common.models import WorkerID
@@ -14,6 +14,7 @@ class WorkerConfig(StorageConfig):
     worker_id: WorkerID
     data_dir: Path
     controller_url: AnyHttpUrl | None = None
+    scan_interval_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False)] = 1.0
 
     @field_validator("controller_url")
     @classmethod
@@ -33,4 +34,5 @@ class WorkerConfig(StorageConfig):
             data_dir=Path(os.environ.get("OBJECT_STORE_WORKER_DATA_DIR", f".local-data/{worker_id}")),
             chunk_size_bytes=int(os.environ.get("OBJECT_STORE_CHUNK_SIZE_BYTES", "1000000")),
             controller_url=os.environ.get("OBJECT_STORE_CONTROLLER_URL"),
+            scan_interval_seconds=float(os.environ.get("OBJECT_STORE_SCAN_INTERVAL_SECONDS", "1")),
         )

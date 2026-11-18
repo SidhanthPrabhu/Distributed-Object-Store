@@ -1,8 +1,15 @@
 # Distributed Object Store
 
-The five-service Compose deployment passed the C1 technical checks with A2/A3 and B2/B3 together. All four workers reached readiness, and a public upload/download verified two copies of each chunk and survived worker and controller restarts. Joint review is pending.
+This course project stores binary objects across four persistent workers behind one REST controller. It splits objects into 1 MB chunks, keeps two copies, and verifies SHA-256 on reads. C0–C2 are accepted, including the full public API and initial CLI. See the tracker for repair and submission verification.
 
-Start with the [two-person implementation plan](TEAM-PLAN.md): the repository owner implements the controller, metadata, client-facing APIs, and repair coordination; their teammate implements worker storage, heartbeats, integrity scanning, deployment, and demo tools. Both review and verify the integrated system.
+Start the services and check readiness:
+
+```bash
+docker compose up -d --build --wait
+docker compose run --rm client health
+```
+
+Use the [CLI guide](docs/CLIENT-CLI.md) for upload, download, metadata, and inspection commands. Use the [course walkthrough](docs/DEMO.md) for the six demonstrations.
 
 | Document | Purpose |
 |---|---|
@@ -10,6 +17,7 @@ Start with the [two-person implementation plan](TEAM-PLAN.md): the repository ow
 | [Team plan](TEAM-PLAN.md) | Ownership, file boundaries, task cards A1–A6/B1–B6, milestones, and GitHub workflow |
 | [Progress tracker](docs/COURSE-TRACKER.md) | Actual task status, dependencies, evidence, demo sign-off, and decisions |
 | [Course contract](docs/COURSE-CONTRACT.md) | Shared controller/worker messages and API behavior for parallel development |
+| [Architecture](docs/ARCHITECTURE.md) | Storage lifecycle, health, repair, and durable deletion |
 | [Controller foundation handoff](docs/CONTROLLER-FOUNDATION.md) | Available shared imports, configuration, 56 local checks, and remaining A2/B1–B3 dependencies |
 | [Worker and deployment foundation](docs/WORKER-FOUNDATION.md) | Locked setup, Compose commands, registration, storage recovery, and C1 integration evidence |
 | [Compiled assignment checklist](docs/ASSIGNMENT-REQUIREMENTS.md) | All original requirements in one readable place, with PDF pages, section names, and task owners |
