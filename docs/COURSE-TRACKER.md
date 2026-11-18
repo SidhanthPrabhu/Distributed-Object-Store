@@ -1,6 +1,6 @@
 # Course implementation tracker
 
-Last updated 18 November 2026. **C0–C2 are DONE.** The repository owner confirmed both C0/C1 reviews on 9 November 2026. Owners are role labels until GitHub handles are added. Update this file as implementation proceeds and link to commits, issues, or check results.
+Last updated 18 November 2026. **C0–C4 are DONE.** The repository owner confirmed both C0/C1 reviews on 9 November 2026. Owners are role labels until GitHub handles are added. Update this file as implementation proceeds and link to commits, issues, or check results.
 
 Allowed statuses: **TODO**, **IN PROGRESS**, **IN REVIEW**, **BLOCKED**, **DONE**. A card becomes DONE only after its acceptance checks pass and the other person reviews it. A blocker must name the missing dependency or failing behavior.
 
@@ -28,21 +28,23 @@ Owner's independent A4 verification, 10 November 2026: supplied terminal output 
 | C0: reviewed contract, building services, durable chunk | DONE | Unassigned | 9 Nov 2026: integrated commit `c8b8ca0` includes controller `15df687` and B1/B2/B3. Combined suite: 132 passed, one existing deprecation warning (owner-provided terminal output). Compose configuration/build/start passed; five services recovered readiness after restart. Real durable chunk and restart evidence in [worker handoff](WORKER-FOUNDATION.md). Owner confirmed both reviews in chat on 9 Nov 2026. |
 | C1: distributed two-copy upload/download | DONE | Unassigned | 9 Nov 2026, integrated commit `c8b8ca0`: owner independently verified all four workers ready, a 2,000,123-byte public upload/download, three chunks and six checked copies on distinct worker pairs. Object `d8e9f45f-3901-445e-b779-14aea78f79dc`; SHA-256 `97468f3f77340f797146e716d0ff29519ee826d15e23c8b6fbfdbc0b3ed4c736`. Owner reported all five services ready and the same object/hash intact after restart. Friend also recorded inventory, individual-copy, worker/controller restart and pending-cleanup checks in [worker handoff](WORKER-FOUNDATION.md). Both reviews confirmed by owner in chat. |
 | C2: all required APIs and errors | DONE | Unassigned | 18 Nov 2026: technical review covered A4 `94315b8` and the initial B5 CLI at combined commit `5d9bc15` against the course contract and the 10 Nov test evidence. Technical gate passed: 189 local tests and the separate five-service CLI lifecycle across all six public routes. The A4 probe verified zero chunk writes on PATCH, all-four-worker cleanup, pending deletion through a controller restart, and delayed PUT rejection. [Combined evidence](CLIENT-CLI.md#integrated-c2-verification). Live repair status follows A5 in C3. |
-| C3: failure, corruption, repair, rejoin | IN REVIEW | Unassigned | 18 Nov 2026: 194 local tests passed, with one opt-in live test skipped locally and passed separately. Live outage, rejoin, cold corruption, and two-offline-copy checks passed. [Verification evidence](testing/course-services.json). Joint sign-off pending. |
-| C4: checked submission and course release | IN REVIEW | Unassigned | 18 Nov 2026: 194 local tests passed. All six Docker demos, container CLI, and the separate live C2 test passed. The A4 restart probe passed twice with ordinary startup and once with worker2 deliberately held offline until repair moved a copy. Both replica files and the public download matched after rejoin. [Verification evidence](testing/course-services.json). Independent walkthrough sign-off and release tag pending. |
+| C3: failure, corruption, repair, rejoin | DONE | Unassigned | 18 Nov 2026. The clean-checkout run at `4eb9979` passed 194 local tests and the separate live API test. Live outage, rejoin, cold corruption, and two-offline-copy checks passed. Friend reported the controller teammate's review and approved milestone closeout. [Verification evidence](testing/course-services.json) |
+| C4: checked submission and course release | DONE | Unassigned | 18 Nov 2026. Friend approved milestone closeout after a clean-checkout run on `4eb9979` passed all six Docker demos, the container CLI checks, the live API test, and three restart checks. Both replica files and the public download matched in the forced repair case. The remote tag `course-v1` points to the tested commit. [Verification evidence](testing/course-services.json) |
 
 C0/C1 review sign-off: on 9 November 2026 the repository owner confirmed review of Friend's B1/B2/B3 changes and Friend's review of the owner's A2/A3 changes. This confirmation supersedes earlier pending-review notes for these milestone gates. Owner-run acceptance results above were supplied in this chat; the agent did not rerun those service checks during this documentation update. Card-level acceptance and the later C2/C3/C4 gates remain separate.
 
 ## Assignment demonstration sign-off
 
+On 18 November 2026, Friend supplied clean-checkout output for commit `4eb9979`. The run passed 194 local tests, the separate live API test, all six demos, and three controller restart checks. Friend also reported that the controller teammate completed the C3/C4 review. The controller teammate's independent demo run is pending confirmation.
+
 | Required demo | Preparation lead | You ran it | Friend ran it | Isolated live verification, 18 Nov |
 |---|---|---|---|---|
-| Upload/download, external digest matches | Friend; You support A3 | Pending | Pending | Passed: 2,500,000 identical bytes with independent SHA-256 |
-| >1 MB chunking and worker distribution | You; Friend supplies inspector | Pending | Pending | Passed: three chunks spread across all four workers |
-| Two actual copies and their locations | You; Friend supplies inventory | Pending | Pending | Passed: six actual files with checked digests |
-| Custom metadata retrieve/update without chunk writes | You | Pending | Pending | Passed: custom merge and unchanged worker sequences and bytes |
-| worker2 stop/read/repair/start/reconcile | You; Friend supplies runner | Pending | Pending | Passed: reads survived, online copies were restored, extra copies retired |
-| Actual byte corruption, detection, fallback, repair | Friend; You supply recovery | Pending | Pending | Passed: a real fault was reported, bytes were repaired before a client read, and the download matched |
+| Upload/download, external digest matches | Friend; You support A3 | Pending | Passed on `4eb9979` | Passed: 2,500,000 identical bytes with independent SHA-256 |
+| >1 MB chunking and worker distribution | You; Friend supplies inspector | Pending | Passed on `4eb9979` | Passed: three chunks spread across all four workers |
+| Two actual copies and their locations | You; Friend supplies inventory | Pending | Passed on `4eb9979` | Passed: six actual files with checked digests |
+| Custom metadata retrieve/update without chunk writes | You | Pending | Passed on `4eb9979` | Passed: custom merge and unchanged worker sequences and bytes |
+| worker2 stop/read/repair/start/reconcile | You; Friend supplies runner | Pending | Passed on `4eb9979` | Passed: reads survived, online copies were restored, extra copies retired |
+| Actual byte corruption, detection, fallback, repair | Friend; You supply recovery | Pending | Passed on `4eb9979` | Passed: a real fault was reported, bytes were repaired before a client read, and the download matched |
 
 Also verify restart persistence, boundary/empty files, invalid input, both copies unavailable/invalid, failed uploads, pending deletion, and deletion during repair before C4.
 
