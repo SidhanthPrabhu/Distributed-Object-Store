@@ -3,8 +3,8 @@
   "files": [
     {
       "path": "README.md",
-      "sha256": "11eac877d3df303fc8ba1ac9ed56c6648da6664eb7aac103427d7e161e1635fc",
-      "bytes": 25396
+      "sha256": "64195bffee8636460bd6fd7c4157db5348b1c63a6d0e87e72f26cc4df744dd96",
+      "bytes": 25047
     },
     {
       "path": ".gitignore",
@@ -12,14 +12,9 @@
       "bytes": 279
     },
     {
-      "path": "docs/coding-agent-brief.md",
-      "sha256": "3d9cb211a4eb3e592300163bf5f8075d1485cbd454998f9b86fe4c8022870bee",
-      "bytes": 9772
-    },
-    {
       "path": "docs/course-map.md",
-      "sha256": "ebcea89b1de1fba6ee67b37e8b1472b5f2f3c867aadb3bbb76cd40c747ac97bd",
-      "bytes": 4428
+      "sha256": "6d60348109bfc0cbfa7925428b785245a13f7992a134c1cfa2fe9f706a147183",
+      "bytes": 4264
     },
     {
       "path": "docs/feature-spec.md",
@@ -38,8 +33,8 @@
     },
     {
       "path": "docs/validation-plan.md",
-      "sha256": "017bb0302f6180007cdbb4ec755db11fd9753a5bbd6b498aa2dcf42e8392d33f",
-      "bytes": 18981
+      "sha256": "8d258f0db39e3d851c900045f64c19ac3de92d39ab26a1269dd5a64b10385d40",
+      "bytes": 18951
     },
     {
       "path": "scripts/fetch_research.py",
@@ -68,8 +63,8 @@
     },
     {
       "path": "research/handoff-validation.json",
-      "sha256": "98eaa1b292d6dd92e9327289b24cbcb083e7e516e57c4cc3180281096666d0fd",
-      "bytes": 898
+      "sha256": "64fc02cc254ee7827b2014f3f0175469102f38c4c852f956a45019cabcc670ad",
+      "bytes": 802
     },
     {
       "path": "research/sources.json",

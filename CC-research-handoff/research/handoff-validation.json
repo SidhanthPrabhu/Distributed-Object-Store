@@ -1,7 +1,7 @@
 {
   "review_date": "2026-11-08",
   "scope": "Research handoff only; application not implemented or tested",
-  "source_pdfs_verified": 8,
+  "source_pdfs_verified": 0,
   "requirements": 13,
   "features": 12,
   "correctness_scenarios": 18,
@@ -9,17 +9,12 @@
   "documents": [
     {
       "file": "README.md",
-      "words": 3417,
-      "lines": 249
-    },
-    {
-      "file": "docs/coding-agent-brief.md",
-      "words": 1289,
-      "lines": 70
+      "words": 3365,
+      "lines": 248
     },
     {
       "file": "docs/course-map.md",
-      "words": 585,
+      "words": 564,
       "lines": 29
     },
     {
@@ -39,7 +34,7 @@
     },
     {
       "file": "docs/validation-plan.md",
-      "words": 2623,
+      "words": 2619,
       "lines": 170
     }
   ],

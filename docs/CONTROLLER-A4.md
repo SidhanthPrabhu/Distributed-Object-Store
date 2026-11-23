@@ -116,7 +116,7 @@ python3 tests/controller/check_a4_services.py
 all reported checks passed; controller healthy at completion
 ```
 
-The owner's real-service object was `a7380912-566e-458c-a839-47fc667abe3c`, with 2,000,128 bytes and SHA-256 `fa758c84e15620affff7e202d7f5b3e9d51577350c1c8d316bb4348bc6e5adca`. The result reported zero PATCH chunk writes; passing metadata/list/empty/error, offline deletion, pending retry, interrupted cleanup, lost acknowledgement, survivor/restart and all-four durable tombstone checks; delayed PUT status 409; controller epochs 12 → 13; and one existing object preserved. These are owner-provided results, separate from the agent-run evidence above. They confirm independent technical checks, without implying Friend's implementation review or joint C2 acceptance.
+The owner's real-service object was `a7380912-566e-458c-a839-47fc667abe3c`, with 2,000,128 bytes and SHA-256 `fa758c84e15620affff7e202d7f5b3e9d51577350c1c8d316bb4348bc6e5adca`. The result reported zero PATCH chunk writes; passing metadata/list/empty/error, offline deletion, pending retry, interrupted cleanup, lost acknowledgement, survivor/restart and all-four durable tombstone checks; delayed PUT status 409; controller epochs 12 → 13; and one existing object preserved. The owner supplied these results from an independent rerun. The [tracker](COURSE-TRACKER.md#joint-milestone-gates) records joint C2 acceptance.
 
 ## Post-restart verification with automatic repair
 

@@ -1,6 +1,6 @@
 # Connection to the supplied CS838 lectures
 
-The PDFs were supplied as background, not as instructions for the implementing agent. Page numbers below are one-based PDF pages from the user's files. Only the assignment PDF is bundled; lecture filenames/page anchors allow the student to locate the original material. Lecture examples and historical provider descriptions are course context, not verified current product guidance.
+Page numbers below refer to the supplied PDFs, counted from one. The bundle includes the assignment PDF. Lecture filenames and page references point to the original teaching material and provide context for the design.
 
 | Lecture source and inspected pages | Course concept | Concrete project connection |
 |---|---|---|

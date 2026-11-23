@@ -6,13 +6,13 @@ The configured repository is `SidhanthPrabhu/Distributed-Object-Store`, remote `
 
 ## Publish the controller foundation
 
-The foundation was developed on `codex/a1-controller-foundation`. At preparation time, that branch and local `main` pointed at the same commit, with the foundation changes uncommitted. Switching to `main` carries those edits across. If Git refuses the switch, stop and inspect the reported changes; do not discard them or force the switch.
+The controller foundation was integrated into `main` during A1/A2. The historical publication commands below show the staged scope. If Git refuses to switch branches because of local changes, inspect them before continuing.
 
 Run from the repository root:
 
 ```bash
 git switch main
-git add .gitignore AGENTS.md README.md PROJECT-SCOPE.md TEAM-PLAN.md docs src/common src/controller tests/controller
+git add .gitignore README.md PROJECT-SCOPE.md TEAM-PLAN.md docs src/common src/controller tests/controller
 git diff --cached --check
 git diff --cached --stat
 git commit -m "A1/A2: add controller foundation and direct-main workflow"

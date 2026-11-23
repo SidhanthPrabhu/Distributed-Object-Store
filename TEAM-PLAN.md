@@ -1,6 +1,6 @@
 # Course project: two-person implementation plan
 
-Recorded 8 November 2026. **You** means the repository owner's controller role; **Friend** means the teammate's worker/deployment role, even when that teammate is the person talking to Codex. These labels can be replaced with GitHub handles later. See the [tracker](docs/COURSE-TRACKER.md) for actual implementation/review status and outstanding integration gates. Use the [Codex starting prompts](docs/CODEX-START.md) to hand each role to a fresh chat.
+Recorded 8 November 2026. **You** means the repository owner's controller role. **Friend** means the teammate's worker/deployment role. See the [tracker](docs/COURSE-TRACKER.md) for implementation status, verification, and sign-off.
 
 ## What we are building
 

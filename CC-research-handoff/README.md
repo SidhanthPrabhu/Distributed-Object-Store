@@ -1,6 +1,6 @@
 # Mini Distributed Cloud Object Store
 
-**Research and implementation handoff, 8 November 2026.** This repository currently contains a reviewed design and research materials. The object-store application, Docker deployment, tests, and benchmark results have **not** been implemented. Commands labeled "implementation target" describe what the coding agent must create, not software that already runs.
+**Research and implementation handoff, 8 November 2026.** This document records the original design and planned experiments. See the [project README](../README.md) for the implemented course release and the [project scope](../PROJECT-SCOPE.md) for later extensions.
 
 The goal is a correct local distributed object store with defensible, measurable research extensions. It should be a strong CS838 cloud-computing project and a useful systems portfolio artifact. There is no arbitrary limit of two or three features: retain worthwhile mechanisms, make them independently selectable, and implement in dependency order. Baseline correctness always precedes optimization.
 
@@ -15,7 +15,6 @@ The goal is a correct local distributed object store with defensible, measurable
 | [System specification](docs/system-spec.md) | State machines, metadata, APIs, durable storage, restart/delete/repair races |
 | [Feature specification](docs/feature-spec.md) | Algorithms, interfaces, budgets, interactions, and configuration for F1-F12 |
 | [Validation and experiment plan](docs/validation-plan.md) | Correctness scenarios, fair baselines, benchmark methodology, demonstrations, and completion gates |
-| [Coding-agent brief](docs/coding-agent-brief.md) | A self-contained instruction prompt and work sequence for the implementing agent |
 | [Sources](research/sources.json) | Stable paper IDs, titles, versioned arXiv URLs, and public full-text links |
 | [Download provenance](research/downloads.json) | Successful downloads and SHA-256 hashes of reviewed PDF copies |
 | [Review coverage](research/coverage-index.json) | PDF page counts and review anchors |
@@ -246,4 +245,4 @@ If batching has its own measured result, give it a separate bullet. Placeholder 
 - No application stack was previously agreed with the user. Python/FastAPI is the handoff's recommendation, not a user-imposed constraint; a stack change must preserve these contracts and experiments.
 - The minimum required topology remains fixed. Additional observability containers are allowed only as tooling, not extra controllers or storage workers.
 
-Begin with [the coding-agent brief](docs/coding-agent-brief.md). Do not ask the user to repeat decisions already captured here, and do not treat this design as evidence that any code or benchmark has already passed.
+See the [course tracker](../docs/COURSE-TRACKER.md) for recorded implementation and test results.

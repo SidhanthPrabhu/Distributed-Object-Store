@@ -134,7 +134,7 @@ Finally combine the selected adaptive read, maintenance, and batch mechanisms. M
 
 ## 7. Artifact contract for implemented experiments
 
-The implementing agent should create one run directory per immutable configuration:
+Create one run directory per immutable configuration:
 
 ```text
 results/<experiment>/<run_id>/

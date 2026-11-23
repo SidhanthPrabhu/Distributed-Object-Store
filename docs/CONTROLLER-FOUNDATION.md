@@ -2,7 +2,7 @@
 
 This records the original foundation slice. See the [A2/A3 continuation handoff](CONTROLLER-A2-A3.md) for current inventory reconciliation, upload/download, recovery behavior, checks, and B1/B2/B3 integration dependencies.
 
-Developed on `codex/a1-controller-foundation`, 8 November 2026; prepared for direct publication to `main` under the updated [workflow](GITHUB-START.md). Friend's technical review remains pending; a pull request is not required. This is controller-local evidence, not a C0/C1 milestone pass. No worker application, packaging, lock, Docker, or deployment files are supplied by this slice.
+This handoff records the controller foundation as of 8 November 2026. The [course tracker](COURSE-TRACKER.md#joint-milestone-gates) records the later integration and acceptance results.
 
 ## Available interfaces
 
